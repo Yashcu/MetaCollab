@@ -1,3 +1,5 @@
+// frontend/src/pages/ProfilePage.tsx
+
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
@@ -9,27 +11,19 @@ import {
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/components/ui/use-toast";
 import { updateUserProfile, changeUserPassword } from "@/services/userService";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import SettingsCard from "@/components/SettingsCard";
+import { AxiosError } from "axios";
 
-const ProfilePage = () => {
+const ProfileForm = () => {
   const { user, setUser } = useAuth();
   const { toast } = useToast();
-
-  // Form for profile information
   const {
-    register: registerProfile,
-    handleSubmit: handleProfileSubmit,
-    formState: { errors: profileErrors, isSubmitting: isProfileSubmitting },
+    register,
+    handleSubmit,
+    formState: { errors, isSubmitting },
   } = useForm<TProfileSchema>({
     resolver: zodResolver(profileSchema),
     defaultValues: {
@@ -39,35 +33,91 @@ const ProfilePage = () => {
     },
   });
 
-  // Form for password change
-  const {
-    register: registerPassword,
-    handleSubmit: handlePasswordSubmit,
-    formState: { errors: passwordErrors, isSubmitting: isPasswordSubmitting },
-    reset: resetPasswordForm,
-  } = useForm<TPasswordSchema>({
-    resolver: zodResolver(passwordSchema),
-  });
-
-  const onProfileSubmit = async (data: TProfileSchema) => {
+  const onSubmit = async (data: TProfileSchema) => {
     if (!user) return;
     try {
       const updatedUser = await updateUserProfile(user.id, data);
-      setUser(updatedUser); // Update user in global state
+      setUser(updatedUser);
       toast({
         title: "Success",
         description: "Your profile has been updated.",
       });
-    } catch (error: any) {
+    } catch (error) {
+      const err = error as AxiosError<{ message: string }>;
       toast({
         variant: "destructive",
         title: "Update Failed",
-        description: error.response?.data?.message || "An error occurred.",
+        description: err.response?.data?.message,
       });
     }
   };
 
-  const onPasswordSubmit = async (data: TPasswordSchema) => {
+  return (
+    <form onSubmit={handleSubmit(onSubmit)}>
+      <SettingsCard
+        title="User Information"
+        description="Update your personal details here."
+        footer={
+          <Button type="submit" disabled={isSubmitting}>
+            {isSubmitting ? "Saving..." : "Save Changes"}
+          </Button>
+        }
+      >
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="name">Name</Label>
+            <Input
+              id="name"
+              {...register("name")}
+              aria-invalid={!!errors.name}
+            />
+            {errors.name && (
+              <p className="text-sm text-red-500">{errors.name.message}</p>
+            )}
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="email">Email</Label>
+            <Input
+              id="email"
+              type="email"
+              {...register("email")}
+              aria-invalid={!!errors.email}
+            />
+            {errors.email && (
+              <p className="text-sm text-red-500">{errors.email.message}</p>
+            )}
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="avatarUrl">Avatar URL</Label>
+            <Input
+              id="avatarUrl"
+              placeholder="https://example.com/avatar.png"
+              {...register("avatarUrl")}
+              aria-invalid={!!errors.avatarUrl}
+            />
+            {errors.avatarUrl && (
+              <p className="text-sm text-red-500">{errors.avatarUrl.message}</p>
+            )}
+          </div>
+        </div>
+      </SettingsCard>
+    </form>
+  );
+};
+
+const PasswordForm = () => {
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+    reset,
+  } = useForm<TPasswordSchema>({
+    resolver: zodResolver(passwordSchema),
+  });
+
+  const onSubmit = async (data: TPasswordSchema) => {
     if (!user) return;
     try {
       await changeUserPassword(user.id, data);
@@ -75,112 +125,70 @@ const ProfilePage = () => {
         title: "Success",
         description: "Your password has been changed.",
       });
-      resetPasswordForm();
-    } catch (error: any) {
+      reset();
+    } catch (error) {
+      const err = error as AxiosError<{ message: string }>;
       toast({
         variant: "destructive",
-        title: "Password Change Failed",
-        description: error.response?.data?.message || "An error occurred.",
+        title: "Update Failed",
+        description: err.response?.data?.message,
       });
     }
   };
 
   return (
+    <form onSubmit={handleSubmit(onSubmit)}>
+      <SettingsCard
+        title="Change Password"
+        description="Update your security credentials."
+        footer={
+          <Button type="submit" disabled={isSubmitting}>
+            {isSubmitting ? "Updating..." : "Update Password"}
+          </Button>
+        }
+      >
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="currentPassword">Current Password</Label>
+            <Input
+              id="currentPassword"
+              type="password"
+              {...register("currentPassword")}
+              aria-invalid={!!errors.currentPassword}
+            />
+            {errors.currentPassword && (
+              <p className="text-sm text-red-500">
+                {errors.currentPassword.message}
+              </p>
+            )}
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="newPassword">New Password</Label>
+            <Input
+              id="newPassword"
+              type="password"
+              {...register("newPassword")}
+              aria-invalid={!!errors.newPassword}
+            />
+            {errors.newPassword && (
+              <p className="text-sm text-red-500">
+                {errors.newPassword.message}
+              </p>
+            )}
+          </div>
+        </div>
+      </SettingsCard>
+    </form>
+  );
+};
+
+const ProfilePage = () => {
+  return (
     <div>
       <h1 className="text-3xl font-bold mb-6">Profile Settings</h1>
       <div className="grid gap-6 md:grid-cols-2">
-        {/* Profile Information Card */}
-        <Card>
-          <CardHeader>
-            <CardTitle>User Information</CardTitle>
-            <CardDescription>
-              Update your personal details here.
-            </CardDescription>
-          </CardHeader>
-          <form onSubmit={handleProfileSubmit(onProfileSubmit)}>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="name">Name</Label>
-                <Input id="name" {...registerProfile("name")} />
-                {profileErrors.name && (
-                  <p className="text-sm text-red-500">
-                    {profileErrors.name.message}
-                  </p>
-                )}
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
-                <Input id="email" type="email" {...registerProfile("email")} />
-                {profileErrors.email && (
-                  <p className="text-sm text-red-500">
-                    {profileErrors.email.message}
-                  </p>
-                )}
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="avatarUrl">Avatar URL</Label>
-                <Input
-                  id="avatarUrl"
-                  placeholder="https://example.com/avatar.png"
-                  {...registerProfile("avatarUrl")}
-                />
-                {profileErrors.avatarUrl && (
-                  <p className="text-sm text-red-500">
-                    {profileErrors.avatarUrl.message}
-                  </p>
-                )}
-              </div>
-            </CardContent>
-            <CardFooter>
-              <Button type="submit" disabled={isProfileSubmitting}>
-                {isProfileSubmitting ? "Saving..." : "Save Changes"}
-              </Button>
-            </CardFooter>
-          </form>
-        </Card>
-
-        {/* Change Password Card */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Change Password</CardTitle>
-            <CardDescription>Update your security credentials.</CardDescription>
-          </CardHeader>
-          <form onSubmit={handlePasswordSubmit(onPasswordSubmit)}>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="currentPassword">Current Password</Label>
-                <Input
-                  id="currentPassword"
-                  type="password"
-                  {...registerPassword("currentPassword")}
-                />
-                {passwordErrors.currentPassword && (
-                  <p className="text-sm text-red-500">
-                    {passwordErrors.currentPassword.message}
-                  </p>
-                )}
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="newPassword">New Password</Label>
-                <Input
-                  id="newPassword"
-                  type="password"
-                  {...registerPassword("newPassword")}
-                />
-                {passwordErrors.newPassword && (
-                  <p className="text-sm text-red-500">
-                    {passwordErrors.newPassword.message}
-                  </p>
-                )}
-              </div>
-            </CardContent>
-            <CardFooter>
-              <Button type="submit" disabled={isPasswordSubmitting}>
-                {isPasswordSubmitting ? "Updating..." : "Update Password"}
-              </Button>
-            </CardFooter>
-          </form>
-        </Card>
+        <ProfileForm />
+        <PasswordForm />
       </div>
     </div>
   );

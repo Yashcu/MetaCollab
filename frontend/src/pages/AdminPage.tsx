@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getAdminStats } from "@/services/adminService";
 import { Users, FolderKanban, CheckCircle2 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useToast } from "@/components/ui/use-toast";
 
 const AdminPage = () => {
   const [stats, setStats] = useState({
@@ -11,6 +12,7 @@ const AdminPage = () => {
     tasksCompleted: 0,
   });
   const [loading, setLoading] = useState(true);
+  const { toast } = useToast();
 
   useEffect(() => {
     const fetchStats = async () => {
@@ -20,12 +22,17 @@ const AdminPage = () => {
         setStats(data);
       } catch (error) {
         console.error("Failed to fetch admin stats", error);
+        toast({
+          variant: "destructive",
+          title: "Failed to load stats",
+          description: "Could not retrieve admin dashboard statistics.",
+        });
       } finally {
         setLoading(false);
       }
     };
     fetchStats();
-  }, []);
+  }, [toast]);
 
   return (
     <div>

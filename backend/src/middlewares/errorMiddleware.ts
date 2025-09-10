@@ -1,42 +1,58 @@
 import { Request, Response, NextFunction } from "express";
+import { config } from "../config/config";
 import { AppError } from "../utils/appError";
-import { errorResponse } from "../utils/apiResponse";
+import { sendError } from "../utils/apiResponse";
 
-/**
- * Global error handling middleware
- * Catches all errors and sends a consistent API response
- */
+// --- Type Guards to safely check error types ---
+const isValidationError = (err: any): err is { name: 'ValidationError'; errors: { [key: string]: { message: string } } } => {
+  return err?.name === 'ValidationError';
+}
+
+const isMongoServerError = (err: any): err is { name: 'MongoServerError'; code: number; keyValue: object } => {
+  return err?.name === 'MongoServerError' && err?.code === 11000;
+}
+
+// --- Main Global Error Handler ---
 export const globalErrorHandler = (
-  err: any,
-  req: Request,
+  err: unknown,
+  _req: Request,
   res: Response,
-  next: NextFunction
+  _next: NextFunction,
 ) => {
-  // If the error is an instance of AppError, use its status and message
+  let reportableError: AppError;
+
   if (err instanceof AppError) {
-    return errorResponse(res, err.message, err.statusCode, err.stack);
-  }
-
-  // For validation or mongoose errors, customize the message
-  if (err.name === "ValidationError") {
-    const messages = Object.values(err.errors).map((val: any) => val.message);
-    return errorResponse(res, messages.join(", "), 400);
-  }
-
-  if (err.name === "MongoServerError" && err.code === 11000) {
-    // Duplicate key error
+    reportableError = err;
+  } else if (isValidationError(err)) {
+    const messages = Object.values(err.errors).map((val) => val.message);
+    reportableError = new AppError(messages.join(". "), 400);
+  } else if (isMongoServerError(err)) {
     const field = Object.keys(err.keyValue)[0];
-    return errorResponse(res, `Duplicate field value: ${field}`, 400);
+    const message = `An account with that ${field} already exists.`;
+    reportableError = new AppError(message, 400);
+  } else {
+    console.error("💥 UNHANDLED ERROR", err);
+    reportableError = new AppError("Something went very wrong on our end.", 500);
   }
 
-  // Default to 500 Internal Server Error
-  console.error(err); // log for debugging
-  return errorResponse(res, "Internal Server Error", 500, err.stack);
+  // --- Send Response Based on Environment ---
+  if (config.NODE_ENV === 'development') {
+    // In development, send a detailed error
+    return sendError(res, reportableError.message, reportableError.statusCode, {
+      stack: reportableError.stack
+    });
+  } else {
+    // In production, send a clean, user-friendly error
+    if (reportableError.isOperational) {
+        return sendError(res, reportableError.message, reportableError.statusCode);
+    }
+    return sendError(res, "Something went very wrong on our end.", 500);
+  }
 };
 
-/**
- * Catch unhandled routes
- */
-export const notFoundHandler = (req: Request, res: Response, next: NextFunction) => {
-  return errorResponse(res, `Cannot find ${req.originalUrl} on this server`, 404);
+
+// --- 404 Not Found Handler ---
+export const notFoundHandler = (req: Request, _res: Response, next: NextFunction) => {
+  const err = new AppError(`Cannot find ${req.originalUrl} on this server`, 404);
+  next(err);
 };

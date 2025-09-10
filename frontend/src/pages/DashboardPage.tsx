@@ -1,3 +1,5 @@
+// frontend/src/pages/DashboardPage.tsx
+
 import {
   Card,
   CardHeader,
@@ -6,7 +8,7 @@ import {
   CardDescription,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { PlusCircle } from "lucide-react";
+import { PlusCircle, Trash2 } from "lucide-react";
 import { Link } from "react-router-dom";
 import {
   Dialog,
@@ -17,6 +19,17 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import SkeletonCard from "@/components/SkeletonCard";
 import { useUIStore } from "@/state/uiStore";
 import { useEffect, useState } from "react";
@@ -26,15 +39,15 @@ import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Trash2 } from "lucide-react";
 import {
   createProject,
   getProjects,
   deleteProject,
 } from "@/services/projectService";
 import { useAuth } from "@/hooks/useAuth";
+import { useToast } from "@/components/ui/use-toast";
+import { AxiosError } from "axios";
 
-// Validation schema for the new project form
 const projectSchema = z.object({
   name: z.string().min(3, "Project name must be at least 3 characters"),
   description: z.string().optional(),
@@ -44,8 +57,9 @@ type TProjectSchema = z.infer<typeof projectSchema>;
 const DashboardPage = () => {
   const { isProjectsLoading, setProjectsLoading } = useUIStore();
   const [projects, setProjects] = useState<Project[]>([]);
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const { user } = useAuth();
+  const { toast } = useToast();
 
   const {
     register,
@@ -56,24 +70,6 @@ const DashboardPage = () => {
     resolver: zodResolver(projectSchema),
   });
 
-  const onProjectDelete = async (e: React.MouseEvent, projectId: string) => {
-    e.preventDefault(); // Prevent navigation when clicking the button
-    e.stopPropagation();
-
-    if (window.confirm("Are you sure you want to delete this project?")) {
-      try {
-        await deleteProject(projectId);
-        // Remove the project from the state for an instant UI update
-        setProjects((prevProjects) =>
-          prevProjects.filter((p) => p.id !== projectId)
-        );
-      } catch (error) {
-        console.error("Failed to delete project", error);
-        // Optionally, show an error toast
-      }
-    }
-  };
-
   useEffect(() => {
     const fetchProjects = async () => {
       setProjectsLoading(true);
@@ -81,29 +77,48 @@ const DashboardPage = () => {
         const fetchedProjects = await getProjects();
         setProjects(fetchedProjects);
       } catch (error) {
-        console.error("Failed to fetch projects", error);
-        // Optionally, show a toast notification for the error
+        toast({ variant: "destructive", title: "Failed to load projects" });
       } finally {
         setProjectsLoading(false);
       }
     };
     fetchProjects();
-  }, [setProjectsLoading]);
 
-  // Handler for project creation form submission
+    const handleRefetch = () => fetchProjects();
+    window.addEventListener("dashboard:refetch", handleRefetch);
+
+    return () => {
+      window.removeEventListener("dashboard:refetch", handleRefetch);
+    };
+  }, [setProjectsLoading, toast]);
+
+  const onProjectDelete = async (projectId: string) => {
+    try {
+      await deleteProject(projectId);
+      setProjects((p) => p.filter((proj) => proj.id !== projectId));
+      toast({ title: "Project Deleted" });
+    } catch (error) {
+      toast({ variant: "destructive", title: "Deletion Failed" });
+    }
+  };
+
   const onProjectCreate = async (data: TProjectSchema) => {
     try {
       const newProject = await createProject({
         name: data.name,
         description: data.description || "",
       });
-      // Add the new project to the top of the list for an instant UI update
-      setProjects((prevProjects) => [newProject, ...prevProjects]);
+      setProjects((p) => [newProject, ...p]);
       reset();
-      setIsDialogOpen(false);
+      setIsCreateDialogOpen(false);
+      toast({ title: "Project Created!" });
     } catch (error) {
-      console.error("Failed to create project", error);
-      // Optionally, show a toast notification for the error
+      const axiosError = error as AxiosError<{ message: string }>;
+      toast({
+        variant: "destructive",
+        title: "Creation Failed",
+        description: axiosError.response?.data?.message,
+      });
     }
   };
 
@@ -111,7 +126,7 @@ const DashboardPage = () => {
     <div>
       <div className="flex flex-wrap gap-4 justify-between items-center mb-6">
         <h1 className="text-3xl font-bold">Dashboard</h1>
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
           <DialogTrigger asChild>
             <Button aria-label="Create new project">
               <PlusCircle className="mr-2 h-4 w-4" /> Create Project
@@ -162,36 +177,58 @@ const DashboardPage = () => {
         {isProjectsLoading
           ? Array.from({ length: 3 }).map((_, i) => <SkeletonCard key={i} />)
           : projects.map((p) => (
-              <Link
-                to={`/project/${p.id}`}
+              <Card
                 key={p.id}
-                aria-label={`View project ${p.name}`}
-                className="relative group"
+                className="relative group hover:shadow-lg transition-shadow h-full flex flex-col"
               >
-                <Card className="hover:shadow-lg transition-shadow h-full">
+                <Link
+                  to={`/project/${p.id}`}
+                  className="flex flex-col flex-grow"
+                >
                   <CardHeader>
                     <CardTitle>{p.name}</CardTitle>
-                    <CardDescription>{p.description}</CardDescription>
+                    <CardDescription>
+                      {p.description || "No description."}
+                    </CardDescription>
                   </CardHeader>
-                  <CardContent>
+                  <CardContent className="flex-grow">
                     <p className="text-sm text-muted-foreground">
-                      {p.members.length} members
+                      {p.members.length} member(s)
                     </p>
                   </CardContent>
-                </Card>
-                {/* Add Delete Button */}
+                </Link>
                 {user?.id === p.owner.id && (
-                  <Button
-                    variant="destructive"
-                    size="icon"
-                    className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity"
-                    onClick={(e) => onProjectDelete(e, p.id)}
-                    aria-label="Delete project"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        variant="destructive"
+                        size="icon"
+                        className="absolute top-2 right-2 h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
+                        aria-label="Delete project"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          This will permanently delete the "{p.name}" project
+                          and all of its tasks.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                          onClick={() => onProjectDelete(p.id)}
+                        >
+                          Continue
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
                 )}
-              </Link>
+              </Card>
             ))}
       </div>
     </div>

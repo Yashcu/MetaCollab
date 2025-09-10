@@ -1,20 +1,39 @@
 import { Router } from "express";
 import { protect } from "../middlewares/authMiddleware";
 import {
-  getAllUsers,
   getUserById,
-  updateUser,
+  updateUserProfile,
   deleteUser,
   changePassword,
 } from "../controllers/userController";
+import {
+  updateProfileValidator,
+  changePasswordValidator,
+} from "../utils/validators";
+import { validateRequest } from "../middlewares/validationMiddleware";
 
 const router = Router();
 
-// Protect all user routes
 router.use(protect);
 
-router.route("/").get(getAllUsers);
-router.route("/:id").get(getUserById).put(updateUser).delete(deleteUser);
-router.put("/:id/password", changePassword);
+// Routes for a user to manage THEIR OWN profile
+
+router.get("/:id", getUserById);
+
+router.put(
+  "/:id",
+  updateProfileValidator,
+  validateRequest,
+  updateUserProfile
+);
+
+router.delete("/:id", deleteUser);
+
+router.put(
+  "/:id/password",
+  changePasswordValidator,
+  validateRequest,
+  changePassword
+);
 
 export default router;

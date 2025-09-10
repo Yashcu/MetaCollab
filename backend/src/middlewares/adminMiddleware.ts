@@ -1,11 +1,13 @@
 import { Request, Response, NextFunction } from "express";
-import { errorResponse } from "../utils/apiResponse";
+import { sendError } from "../utils/apiResponse";
 
-// Middleware to check if the user has an 'admin' role
+// isAdmin.ts - check if current user is admin
 export const isAdmin = (req: Request, res: Response, next: NextFunction) => {
-  if (req.user && 'role' in req.user && req.user.role === 'admin') {
-    next();
-  } else {
-    return errorResponse(res, "Access denied. Admin privileges required.", 403);
+  if(!req.user){
+    return sendError(res, "Not authenticated", 401);
   }
+  if (req.user.role !== "admin") {
+    return sendError(res, "Access denied. Admin privileges required.", 403);
+  }
+  next();
 };

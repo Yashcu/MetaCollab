@@ -1,12 +1,33 @@
 import { NavLink } from "react-router-dom";
-import { LayoutDashboard, User, ShieldCheck } from "lucide-react"; // <-- Trophy icon removed
+import { LayoutDashboard, User, ShieldCheck, LucideIcon } from "lucide-react";
 import { useUIStore } from "@/state/uiStore";
-import { useAuth } from "@/hooks/useAuth"; // <-- Import useAuth
+import { useAuth } from "@/hooks/useAuth";
 import { cn } from "@/lib/utils";
+
+interface NavLinkItem {
+  to: string;
+  label: string;
+  icon: LucideIcon;
+  adminOnly?: boolean;
+}
+
+const navLinks: NavLinkItem[] = [
+  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { to: "/profile", label: "Profile", icon: User },
+  { to: "/admin", label: "Admin Panel", icon: ShieldCheck, adminOnly: true },
+];
+
+const getNavLinkClass = ({ isActive }: { isActive: boolean }) =>
+  cn(
+    "flex items-center px-4 py-2 mt-2 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700",
+    isActive
+      ? "bg-gray-200 dark:bg-gray-700 font-semibold"
+      : "text-gray-600 dark:text-gray-300"
+  );
 
 const Sidebar = () => {
   const { isSidebarOpen, toggleSidebar } = useUIStore();
-  const { user } = useAuth(); // <-- Get the authenticated user
+  const { user } = useAuth();
 
   const closeSidebar = () => {
     if (isSidebarOpen) {
@@ -14,16 +35,12 @@ const Sidebar = () => {
     }
   };
 
-  const navLinkClass = ({ isActive }: { isActive: boolean }) =>
-    `flex items-center px-4 py-2 mt-2 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 ${
-      isActive
-        ? "bg-gray-200 dark:bg-gray-700 font-semibold"
-        : "text-gray-600 dark:text-gray-300"
-    }`;
+  const accessibleLinks = navLinks.filter(
+    (link) => !link.adminOnly || (link.adminOnly && user?.role === "admin")
+  );
 
   return (
     <>
-      {/* ... (mobile sidebar overlay remains the same) ... */}
       <div
         className={cn(
           "fixed md:relative z-50 md:z-auto flex h-full w-64 flex-col bg-white dark:bg-gray-800 border-r dark:border-gray-700 transition-transform duration-300 ease-in-out",
@@ -36,34 +53,17 @@ const Sidebar = () => {
           </span>
         </div>
         <nav className="mt-10 px-2">
-          <NavLink
-            to="/dashboard"
-            className={navLinkClass}
-            onClick={closeSidebar}
-          >
-            <LayoutDashboard className="w-5 h-5" />
-            <span className="mx-4">Dashboard</span>
-          </NavLink>
-          {/* Leaderboard NavLink REMOVED */}
-          <NavLink
-            to="/profile"
-            className={navLinkClass}
-            onClick={closeSidebar}
-          >
-            <User className="w-5 h-5" />
-            <span className="mx-4">Profile</span>
-          </NavLink>
-          {/* **SECURITY UPDATE**: Conditionally render the Admin Panel link */}
-          {user?.role === "admin" && (
+          {accessibleLinks.map(({ to, label, icon: Icon }) => (
             <NavLink
-              to="/admin"
-              className={navLinkClass}
+              key={to}
+              to={to}
+              className={getNavLinkClass}
               onClick={closeSidebar}
             >
-              <ShieldCheck className="w-5 h-5" />
-              <span className="mx-4">Admin Panel</span>
+              <Icon className="w-5 h-5" />
+              <span className="mx-4">{label}</span>
             </NavLink>
-          )}
+          ))}
         </nav>
       </div>
     </>

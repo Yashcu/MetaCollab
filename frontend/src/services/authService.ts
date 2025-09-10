@@ -9,7 +9,6 @@ import { TLoginSchema, TSignupSchema } from '@/lib/validators';
  */
 export const login = async (credentials: TLoginSchema): Promise<{ user: User, token: string }> => {
   const response = await api.post('/auth/login', credentials);
-  // The backend now returns the user object and token in the `data` field of the success response
   return response.data.data;
 };
 

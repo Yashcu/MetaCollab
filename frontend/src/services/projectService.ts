@@ -18,8 +18,12 @@ export const getProjectById = async (projectId: string): Promise<Project> => {
   return response.data.data;
 };
 
-export const addMember = async (projectId: string, email: string): Promise<Project> => {
-  const response = await api.post(`/projects/${projectId}/members`, { email });
+export const inviteMember = async (projectId: string, email: string): Promise<void> => {
+  await api.post(`/projects/${projectId}/members`, { email });
+};
+
+export const removeMember = async (projectId: string, memberId: string): Promise<Project> => {
+  const response = await api.delete(`/projects/${projectId}/members/${memberId}`);
   return response.data.data;
 };
 

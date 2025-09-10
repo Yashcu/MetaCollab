@@ -1,70 +1,84 @@
-import { Request, Response } from "express";
-import { User } from "../models/User";
-import { successResponse, errorResponse } from "../utils/apiResponse";
-import bcrypt from "bcryptjs";
+import { Request, Response, NextFunction } from 'express';
+import { User } from '../models/User';
+import { Project } from '@/models/Project';
+import { sendSuccess } from '../utils/apiResponse';
+import { asyncHandler } from '../utils/asyncHandler';
+import { AppError } from '../utils/appError';
+import { io } from '@/server';
+import mongoose from 'mongoose';
+import _ from 'lodash';
 
-// Get all users
-export const getAllUsers = async (req: Request, res: Response) => {
-  try {
-    const users = await User.find().select("-password");
-    successResponse(res, users, "Users fetched");
-  } catch (err) {
-    errorResponse(res, "Failed to fetch users", 500, err);
+export const getAllUsers = asyncHandler(async (_req: Request, res: Response) => {
+  const users = await User.find();
+  sendSuccess(res, users, 'Users fetched successfully');
+});
+
+export const getUserById = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+  const user = await User.findById(req.params.id);
+
+  if (!user) {
+    return next(new AppError('User not found', 404));
   }
-};
+  sendSuccess(res, user, 'User fetched successfully');
+});
 
-// Get user by ID
-export const getUserById = async (req: Request, res: Response) => {
-  try {
-    const user = await User.findById(req.params.id).select("-password");
-    if (!user) return errorResponse(res, "User not found", 404);
-    successResponse(res, user, "User fetched");
-  } catch (err) {
-    errorResponse(res, "Failed to fetch user", 500, err);
+export const updateUserProfile = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+  if (req.params.id !== req.user?.userId) {
+    return next(new AppError('You are not authorized to perform this action', 403));
   }
-};
 
-// Update user
-export const updateUser = async (req: Request, res: Response) => {
-  try {
-    const { name, email, avatarUrl } = req.body;
-    const updateData: any = { name, email, avatarUrl };
+  const filteredBody = _.pick(req.body, ['name', 'avatarUrl']);
 
-    const user = await User.findByIdAndUpdate(req.params.id, updateData, { new: true }).select("-password");
-    if (!user) return errorResponse(res, "User not found", 404);
-    successResponse(res, user, "User updated");
-  } catch (err) {
-    errorResponse(res, "Failed to update user", 500, err);
+  const updatedUser = await User.findByIdAndUpdate(req.user.userId, filteredBody, {
+    new: true,
+    runValidators: true,
+  });
+
+  if (!updatedUser) {
+    return next(new AppError('User not found', 404));
   }
-};
 
-export const changePassword = async (req: Request, res: Response) => {
-  try {
-    const { currentPassword, newPassword } = req.body;
-    const user = await User.findById(req.params.id);
+  const projects = await Project.find({ members: updatedUser._id });
+  for (const project of projects) {
+    const populatedProject = await project.populate('owner members', 'name email avatarUrl');
+    io.to(project.id).emit('project:updated', populatedProject);
 
-    if (!user || !user.password) return errorResponse(res, "User not found", 404);
-
-    const isMatch = await bcrypt.compare(currentPassword, user.password);
-    if (!isMatch) return errorResponse(res, "Incorrect current password", 400);
-
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
-    user.password = hashedPassword;
-    await user.save();
-
-    successResponse(res, null, "Password updated successfully");
-  } catch (err) {
-    errorResponse(res, "Failed to update password", 500, err);
+    const tasks = await mongoose.model('Task').find({ project: project.id }).sort('order').populate('assignee', 'name email avatarUrl');
+    io.to(project.id).emit('tasks:updated', tasks);
   }
-};
 
-// Delete user
-export const deleteUser = async (req: Request, res: Response) => {
-  try {
-    const user = await User.findByIdAndDelete(req.params.id);
-    if (!user) return errorResponse(res, "User not found", 404);
-    successResponse(res, null, "User deleted");
-  } catch (err) {
-    errorResponse(res, "Failed to delete user", 500, err);
+  sendSuccess(res, updatedUser, 'Profile updated successfully');
+});
+
+export const changePassword = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+  const { currentPassword, newPassword } = req.body;
+
+  if (req.params.id !== req.user?.userId) {
+    return next(new AppError('You are not authorized to perform this action', 403));
   }
-};
+
+  const user = await User.findById(req.user.userId).select('+password');
+
+  if (!user || !(await user.comparePassword(currentPassword))) {
+     return next(new AppError('Incorrect current password', 401));
+  }
+
+  user.password = newPassword;
+  await user.save();
+
+  sendSuccess(res, null, 'Password updated successfully');
+});
+
+export const deleteUser = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+  if (req.params.id !== req.user?.userId) {
+    return next(new AppError('You are not authorized to perform this action', 403));
+  }
+
+  const user = await User.findByIdAndDelete(req.user.userId);
+
+  if (!user) {
+    return next(new AppError('User not found', 404));
+  }
+
+  sendSuccess(res, null, 'User deleted successfully');
+});

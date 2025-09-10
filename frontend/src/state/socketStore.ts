@@ -2,68 +2,94 @@ import { create } from "zustand";
 import io, { Socket } from "socket.io-client";
 import { useAuthStore } from "./authStore";
 
-const SOCKET_URL = "http://localhost:5000";
+const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || "http://localhost:5000";
+
+interface ProjectUser {
+  userId: string;
+  userName: string;
+  avatar?: string;
+}
+
+type ConnectionStatus = "idle" | "connecting" | "connected" | "disconnected";
+type RoomStatus = "active" | "waiting" | "idle";
 
 interface SocketState {
   socket: Socket | null;
-  onlineUsers: string[];
+  status: ConnectionStatus;
+  roomStatus: RoomStatus;
+  projectUsers: ProjectUser[];
   connect: () => void;
   disconnect: () => void;
-  setOnlineUsers: (users: string[]) => void;
-  addOnlineUser: (userId: string) => void;
-  removeOnlineUser: (userId: string) => void;
+  joinProject: (projectId: string) => void;
+  leaveProject: (projectId: string) => void;
 }
 
 export const useSocketStore = create<SocketState>((set, get) => ({
   socket: null,
-  onlineUsers: [],
+  status: "idle",
+  roomStatus: "idle",
+  projectUsers: [],
 
   connect: () => {
+    if (get().socket) return;
+
     const { token } = useAuthStore.getState();
-    if (token && !get().socket) {
-      const newSocket = io(SOCKET_URL, {
-        auth: {
-          token,
-        },
-      });
-
-      newSocket.on("connect", () => {
-        set({ socket: newSocket });
-        console.log("✅ Socket connected");
-      });
-
-      newSocket.on("users:online", (users: string[]) => {
-        get().setOnlineUsers(users);
-      });
-
-      // Listen for 'id' property from the backend event payload
-      newSocket.on("user:online", (data: { id: string }) => {
-        get().addOnlineUser(data.id);
-      });
-
-      // Listen for 'id' property from the backend event payload
-      newSocket.on("user:offline", (data: { id: string }) => {
-        get().removeOnlineUser(data.id);
-      });
-
-      newSocket.on("disconnect", () => {
-        set({ socket: null, onlineUsers: [] });
-        console.log("🔥 Socket disconnected");
-      });
+    if (!token) {
+      return console.error("Socket connection failed: No auth token.");
     }
+
+    set({ status: "connecting" });
+    const newSocket = io(SOCKET_URL, {
+      auth: { token },
+      transports: ["websocket"],
+      reconnectionAttempts: 5,
+    });
+
+    newSocket.on("connect", () => {
+      set({ status: "connected" });
+      console.log("✅ Socket connected:", newSocket.id);
+    });
+
+    newSocket.on("disconnect", () => {
+      set({ status: "disconnected", roomStatus: "idle", projectUsers: [] });
+      console.log("🔥 Socket disconnected.");
+    });
+
+    newSocket.on("room:active", () => set({ roomStatus: "active" }));
+    newSocket.on("room:waiting", () => set({ roomStatus: "waiting" }));
+
+    newSocket.on("user:joined", (user: ProjectUser) => {
+      set((state) => ({ projectUsers: [...state.projectUsers, user] }));
+    });
+
+    newSocket.on("user:left", ({ userId }: { userId: string }) => {
+      set((state) => ({
+        projectUsers: state.projectUsers.filter((p) => p.userId !== userId),
+      }));
+    });
+
+    set({ socket: newSocket });
   },
 
   disconnect: () => {
     get().socket?.disconnect();
+    set({ socket: null, status: "idle", roomStatus: "idle", projectUsers: [] });
   },
 
-  setOnlineUsers: (users) => set({ onlineUsers: users }),
-  addOnlineUser: (userId) =>
-    set((state) => ({
-      onlineUsers: [...new Set([...state.onlineUsers, userId])],
-    })),
-  removeOnlineUser: (userId) =>
-    set((state) => ({
-      onlineUsers: state.onlineUsers.filter((id) => id !== userId),
-    })),
+  joinProject: (projectId) => {
+    get().socket?.emit(
+      "join:project",
+      projectId,
+      (response: { status: string; existingUsers: ProjectUser[] }) => {
+        if (response.status === "ok") {
+          set({ projectUsers: response.existingUsers });
+        }
+      }
+    );
+  },
+
+  leaveProject: (projectId) => {
+    get().socket?.emit("leave:project", projectId);
+    set({ roomStatus: "idle", projectUsers: [] });
+  },
 }));

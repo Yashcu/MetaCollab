@@ -1,119 +1,164 @@
-import { create } from 'zustand';
-import Peer from 'simple-peer';
-import { useSocketStore } from './socketStore';
-import { useAuthStore } from './authStore';
-import { toast } from '@/components/ui/use-toast';
+import { create } from "zustand";
+import Peer from "simple-peer";
+import { useSocketStore } from "./socketStore";
+import { useAuthStore } from "./authStore";
+import { toast } from "@/components/ui/use-toast";
+
+type CallStatus =
+  | "idle"
+  | "getting-media"
+  | "ringing-outgoing"
+  | "ringing-incoming"
+  | "active"
+  | "failed";
 
 interface CallInfo {
-  isReceivingCall: boolean;
-  from: { id: string; name: string } | null;
-  signal: any;
+  from: { id: string; name: string };
+  signal: Peer.SignalData;
 }
 
 interface CallState {
-  stream: MediaStream | null;
-  call: CallInfo;
-  callAccepted: boolean;
-  callEnded: boolean;
-  myVideo: React.RefObject<HTMLVideoElement> | null;
-  userVideo: React.RefObject<HTMLVideoElement> | null;
-  setStream: (stream: MediaStream | null) => void;
-  setCall: (callData: CallInfo) => void;
-  setCallAccepted: (accepted: boolean) => void;
-  setCallEnded: (ended: boolean) => void;
-  setMyVideoRef: (ref: React.RefObject<HTMLVideoElement>) => void;
-  setUserVideoRef: (ref: React.RefObject<HTMLVideoElement>) => void;
+
+  status: CallStatus;
+  peer: Peer.Instance | null;
+  myStream: MediaStream | null;
+  peerStream: MediaStream | null;
+  incomingCall: CallInfo | null;
+
+  startMedia: () => Promise<void>;
+  placeCall: (peerId: string, peerName: string) => void;
   answerCall: () => void;
-  callUser: (id: string) => void;
-  leaveCall: () => void;
+  endCall: (shouldEmit?: boolean) => void;
+  toggleMic: () => void;
+  init: () => void;
+  cleanup: () => void;
 }
 
-let peerConnection: Peer.Instance | null = null;
+const initialState = {
+  status: "idle" as CallStatus,
+  peer: null,
+  myStream: null,
+  peerStream: null,
+  incomingCall: null,
+};
 
 export const useCallStore = create<CallState>((set, get) => ({
-  stream: null,
-  call: { isReceivingCall: false, from: null, signal: null },
-  callAccepted: false,
-  callEnded: false,
-  myVideo: null,
-  userVideo: null,
+  ...initialState,
 
-  setStream: (stream) => set({ stream }),
-  setCall: (callData) => set({ call: callData }),
-  setCallAccepted: (accepted) => set({ callAccepted: accepted }),
-  setCallEnded: (ended) => set({ callEnded: ended }),
-  setMyVideoRef: (ref) => set({ myVideo: ref }),
-  setUserVideoRef: (ref) => set({ userVideo: ref }),
-
-  answerCall: () => {
-    const { stream, call, userVideo } = get();
-    const { socket } = useSocketStore.getState();
-
-    if (!stream) {
+  startMedia: async () => {
+    if (get().myStream) return;
+    set({ status: "getting-media" });
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      set({ myStream: stream, status: "idle" });
+    } catch (error) {
+      console.error("Failed to get media stream:", error);
       toast({
         variant: "destructive",
-        title: "Cannot Answer Call",
-        description: "Media permissions are required to answer a call.",
+        title: "Media Permission Denied",
+        description: "Camera and microphone access is required for video calls.",
       });
-      console.error("Attempted to answer call without a media stream.");
-      get().leaveCall();
-      return;
+      set({ status: "failed" });
     }
-
-    set({ callAccepted: true, call: { ...call, isReceivingCall: false } });
-
-    peerConnection = new Peer({ initiator: false, trickle: false, stream: stream! });
-
-    peerConnection.on('signal', (data) => {
-      socket?.emit('call:accepted', { signal: data, to: call.from });
-    });
-
-    peerConnection.on('stream', (currentStream) => {
-      if (userVideo?.current) {
-        userVideo.current.srcObject = currentStream;
-      }
-    });
-
-    peerConnection.signal(call.signal);
   },
 
-  callUser: (id: string) => {
-    const { stream, userVideo } = get();
+  placeCall: (peerId, peerName) => {
+    const { myStream } = get();
     const { socket } = useSocketStore.getState();
     const { user } = useAuthStore.getState();
 
-    // Set callAccepted to true immediately for the caller
-    set({ callAccepted: true });
+    if (!myStream || !socket || !user) {
+      return toast({ variant: "destructive", title: "Cannot place call" });
+    }
 
-    peerConnection = new Peer({ initiator: true, trickle: false, stream: stream! });
+    if (peerId === user.id) {
+      return toast({ variant: "destructive", title: "Cannot Call Yourself" });
+    }
 
-    peerConnection.on('signal', (data) => {
-      socket?.emit('call:user', {
-        to: id,
-        signal: data,
-        from: { id: user?.id, name: user?.name },
+    toast({ description: `Calling ${peerName}...` });
+    const newPeer = new Peer({ initiator: true, trickle: false, stream: myStream });
+    set({ peer: newPeer, status: "ringing-outgoing" });
+
+    newPeer.on("signal", (offer) => {
+      socket.emit("call:offer", { to: peerId, offer });
+    });
+    newPeer.on("stream", (stream) => set({ peerStream: stream, status: "active" }));
+    newPeer.on("close", () => get().endCall(false)); // Don't emit 'end' if we are the one closing
+    newPeer.on("error", () => get().endCall(true));
+  },
+
+  answerCall: () => {
+    const { myStream, incomingCall } = get();
+    const { socket } = useSocketStore.getState();
+
+    if (!myStream || !incomingCall || !socket) {
+      return toast({ variant: "destructive", title: "Cannot answer call" });
+    }
+    set({ status: 'active' });
+
+    const newPeer = new Peer({ initiator: false, trickle: false, stream: myStream });
+    set({ peer: newPeer });
+
+    newPeer.signal(incomingCall.signal);
+
+    newPeer.on("signal", (answer) => {
+      socket.emit("call:answer", { to: incomingCall.from.id, answer });
+    });
+    newPeer.on("stream", (stream) => set({ peerStream: stream }));
+    newPeer.on("close", () => get().endCall(false));
+    newPeer.on("error", () => get().endCall(true));
+  },
+
+  endCall: (shouldEmit = true) => {
+    const { peer, myStream, incomingCall } = get();
+    const { socket } = useSocketStore.getState();
+
+    if (shouldEmit && socket && peer) {
+      const peerId = (peer as any)._remoteAddress || incomingCall?.from.id;
+      if (peerId) {
+        socket.emit("call:end", { to: peerId });
+      }
+    }
+
+    peer?.destroy();
+    myStream?.getTracks().forEach((track) => track.stop());
+    set(initialState);
+  },
+
+  toggleMic: () => {
+    const { myStream } = get();
+    myStream?.getAudioTracks().forEach(track => { track.enabled = !track.enabled; });
+  },
+
+  init: () => {
+    const { socket } = useSocketStore.getState();
+    if (!socket) return;
+
+    socket.on('call:offer', (payload: CallInfo) => {
+      set({ status: 'ringing-incoming', incomingCall: payload });
+      toast({
+        title: "Incoming Call",
+        description: `${payload.from.name} is calling.`,
+        duration: 20000,
       });
     });
 
-    peerConnection.on('stream', (currentStream) => {
-       if (userVideo?.current) { // <-- Use the userVideo ref from the store
-         userVideo.current.srcObject = currentStream;
-       }
+    socket.on('call:answer', (payload: { signal: Peer.SignalData }) => {
+      get().peer?.signal(payload.signal);
     });
 
-    socket?.on('call:accepted', (signal: any) => {
-      // The call is already considered "accepted" on the caller's side.
-      // We just need to signal the peer.
-      peerConnection!.signal(signal);
+    socket.on('call:end', () => {
+      toast({ title: "Call Ended", description: "The other user has left the call." });
+      get().endCall(false);
     });
   },
 
-  leaveCall: () => {
-    set({ callEnded: true, callAccepted: false, call: { isReceivingCall: false, from: null, signal: null } });
-    peerConnection?.destroy();
-    get().stream?.getTracks().forEach(track => track.stop());
-    set({ stream: null });
-    // Reset peerConnection to null after destroying
-    peerConnection = null;
+  cleanup: () => {
+    const { socket } = useSocketStore.getState();
+    if (!socket) return;
+    get().endCall(true);
+    socket.off('call:offer');
+    socket.off('call:answer');
+    socket.off('call:end');
   },
 }));

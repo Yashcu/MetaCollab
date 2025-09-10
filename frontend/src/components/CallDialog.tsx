@@ -6,124 +6,100 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter,
-} from "./ui/dialog";
+} from "@/components/ui/dialog";
 import { Button } from "./ui/button";
-import { PhoneOff } from "lucide-react";
+import { Phone, PhoneOff } from "lucide-react";
 import { useCallStore } from "@/state/callStore";
-import { useToast } from "./ui/use-toast";
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
 }
 
-const CallDialog = ({ isOpen, onClose }: Props) => {
-  const {
-    stream,
-    call,
-    callAccepted,
-    callEnded,
-    setStream,
-    setMyVideoRef,
-    setUserVideoRef,
-    answerCall,
-  } = useCallStore();
-
-  const myVideoRef = useRef<HTMLVideoElement>(null);
-  const userVideoRef = useRef<HTMLVideoElement>(null);
-  const { toast } = useToast();
+const VideoPlayer = ({
+  stream,
+  muted = false,
+}: {
+  stream: MediaStream | null;
+  muted?: boolean;
+}) => {
+  const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
-    setMyVideoRef(myVideoRef);
-    setUserVideoRef(userVideoRef);
-  }, [setMyVideoRef, setUserVideoRef]);
-
-  useEffect(() => {
-    if (isOpen) {
-      navigator.mediaDevices
-        .getUserMedia({ video: true, audio: true })
-        .then((currentStream) => {
-          setStream(currentStream);
-          if (myVideoRef.current) {
-            myVideoRef.current.srcObject = currentStream;
-          }
-        })
-        .catch((err) => {
-          console.error("Failed to get media stream:", err);
-          if (err.name === "NotAllowedError") {
-            toast({
-              variant: "destructive",
-              title: "Permission Denied",
-              description:
-                "You need to allow camera and microphone access to join a call.",
-            });
-          }
-          onClose();
-        });
-    } else {
-      stream?.getTracks().forEach((track) => track.stop());
-      setStream(null);
+    if (videoRef.current && stream) {
+      videoRef.current.srcObject = stream;
     }
+  }, [stream]);
 
-    return () => {
-      stream?.getTracks().forEach((track) => track.stop());
-    };
-  }, [isOpen, setStream, onClose, toast]);
+  return (
+    <video
+      playsInline
+      muted={muted}
+      ref={videoRef}
+      autoPlay
+      className="h-full w-full rounded-lg object-cover"
+    />
+  );
+};
+
+const CallDialog = ({ isOpen, onClose }: Props) => {
+  // --- Subscribe to the new, clean state from the callStore ---
+  const { status, myStream, peerStream, incomingCall, answerCall } =
+    useCallStore();
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-4xl h-[80vh]">
+      <DialogContent className="h-[80vh] max-w-4xl">
         <DialogHeader>
           <DialogTitle>Project Call</DialogTitle>
           <DialogDescription>
-            A real-time video call with your project members.
+            Real-time video call with your project members.
           </DialogDescription>
         </DialogHeader>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 h-[calc(100%-120px)]">
-          {/* My Video */}
-          <div className="bg-black rounded-lg relative">
-            <video
-              playsInline
-              muted
-              ref={myVideoRef}
-              autoPlay
-              className="w-full h-full object-cover rounded-lg"
-            />
-            <p className="absolute bottom-2 left-2 text-white bg-black/50 px-2 rounded">
+
+        <div className="grid h-[calc(100%-120px)] grid-cols-1 gap-4 md:grid-cols-2">
+          {/* My Video Feed */}
+          <div className="relative rounded-lg bg-black">
+            <VideoPlayer stream={myStream} muted />
+            <p className="absolute bottom-2 left-2 rounded bg-black/50 px-2 text-white">
               You
             </p>
           </div>
 
-          {/* User's Video or Call Prompt */}
-          <div className="bg-black rounded-lg relative">
-            {callAccepted && !callEnded ? (
+          {/* Peer's Video Feed or Call Status UI */}
+          <div className="relative flex items-center justify-center rounded-lg bg-black text-white">
+            {status === "active" && peerStream ? (
               <>
-                <video
-                  playsInline
-                  ref={userVideoRef}
-                  autoPlay
-                  className="w-full h-full object-cover rounded-lg"
-                />
-                <p className="absolute bottom-2 left-2 text-white bg-black/50 px-2 rounded">
-                  {call.from?.name || "Peer"}
+                <VideoPlayer stream={peerStream} />
+                <p className="absolute bottom-2 left-2 rounded bg-black/50 px-2 text-white">
+                  {incomingCall?.from?.name || "Peer"}
                 </p>
               </>
-            ) : call.isReceivingCall && !callAccepted ? (
-              <div className="flex flex-col items-center justify-center h-full text-white">
-                <p>{call.from?.name} is calling...</p>
-                <Button onClick={answerCall} className="mt-4">
-                  Answer Call
+            ) : status === "ringing-incoming" ? (
+              <div className="flex flex-col items-center gap-4">
+                <p className="text-lg font-semibold">
+                  {incomingCall?.from?.name} is calling...
+                </p>
+                <Button
+                  onClick={answerCall}
+                  size="lg"
+                  className="bg-green-600 hover:bg-green-700"
+                >
+                  <Phone className="mr-2 h-5 w-5" /> Answer
                 </Button>
               </div>
             ) : (
-              <div className="flex items-center justify-center h-full text-gray-400">
-                <p>Waiting for other user to join...</p>
-              </div>
+              <p className="text-muted-foreground">
+                {status === "ringing-outgoing"
+                  ? "Ringing..."
+                  : "Waiting for user to connect..."}
+              </p>
             )}
           </div>
         </div>
+
         <DialogFooter>
-          <div className="flex gap-4 mx-auto">
+          <div className="mx-auto flex gap-4">
             <Button variant="destructive" size="lg" onClick={onClose}>
               <PhoneOff className="mr-2 h-4 w-4" /> End Call
             </Button>

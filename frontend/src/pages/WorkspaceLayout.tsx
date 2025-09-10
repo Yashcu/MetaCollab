@@ -1,206 +1,166 @@
-import { useEffect, useState, MouseEvent, useCallback } from "react";
-import { useParams } from "react-router-dom";
+import { useEffect, useCallback } from "react";
+import { useParams, useNavigate } from "react-router-dom";
 import { throttle } from "lodash";
+import { shallow } from "zustand/shallow";
 import KanbanBoard from "../components/KanbanBoard";
 import ChatBox from "../components/ChatBox";
 import ProjectDetails from "../components/ProjectDetails";
 import Header from "@/components/Header";
-import { useSocketStore } from "@/state/socketStore";
-import { useAuth } from "@/hooks/useAuth";
-import { Task, Project } from "@/types";
 import CallDialog from "@/components/CallDialog";
+import { useSocketStore } from "@/state/socketStore";
+import { useProjectStore } from "@/state/projectStore";
 import { useCallStore } from "@/state/callStore";
-import { useToast } from "@/components/ui/use-toast";
-import { Button } from "@/components/ui/button";
+import { useChatStore } from "@/state/chatStore";
 import { getProjectById } from "@/services/projectService";
 import { getTasks } from "@/services/taskService";
+import { useToast } from "@/components/ui/use-toast";
 
-interface SocketUser {
-  id: string;
-  name: string;
-}
+const CursorsOverlay = () => {
+  const cursors = useProjectStore((state) => state.cursors, shallow);
+  const projectUsers = useSocketStore((state) => state.projectUsers, shallow);
 
-interface Cursor {
-  user: SocketUser;
-  position: { x: number; y: number };
-}
+  return (
+    <>
+      {Array.from(cursors.entries()).map(([userId, { position }]) => {
+        const user = projectUsers.find((p) => p.userId === userId);
+
+        return (
+          <div
+            key={userId}
+            className="absolute z-50 pointer-events-none transition-transform duration-75 ease-linear"
+            style={{
+              transform: `translate3d(${position.x}px, ${position.y}px, 0)`,
+
+              left: -12, // Offset to center the cursor
+
+              top: -12, // Offset to center the cursor
+            }}
+          >
+            <svg
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+              className="text-blue-500"
+            >
+                           {" "}
+              <path
+                d="M5.63604 5.63604C7.19839 4.07368 9.47463 3.5 12 3.5C14.5254 3.5 16.8016 4.07368 18.364 5.63604C19.9263 7.19839 20.5 9.47463 20.5 12C20.5 14.5254 19.9263 16.8016 18.364 18.364C16.8016 19.9263 14.5254 20.5 12 20.5C9.47463 20.5 7.19839 19.9263 5.63604 18.364C4.07368 16.8016 3.5 14.5254 3.5 12C3.5 9.47463 4.07368 7.19839 5.63604 5.63604Z"
+                stroke="white"
+                strokeWidth="2"
+              />
+                           {" "}
+              <path
+                d="M5.63604 5.63604C7.19839 4.07368 9.47463 3.5 12 3.5C14.5254 3.5 16.8016 4.07368 18.364 5.63604C19.9263 7.19839 20.5 9.47463 20.5 12C20.5 14.5254 19.9263 16.8016 18.364 18.364C16.8016 19.9263 14.5254 20.5 12 20.5C9.47463 20.5 7.19839 19.9263 5.63604 18.364C4.07368 16.8016 3.5 14.5254 3.5 12C3.5 9.47463 4.07368 7.19839 5.63604 5.63604Z"
+                fill="currentColor"
+              />
+                         {" "}
+            </svg>
+                        {/* User's Name Label */}           {" "}
+            <span className="ml-2 mt-1 absolute whitespace-nowrap bg-black bg-opacity-60 text-white text-xs px-2 py-1 rounded-full">
+                            {user?.userName || "..."}           {" "}
+            </span>
+                     {" "}
+          </div>
+        );
+      })}
+    </>
+  );
+};
 
 const WorkspaceLayout = () => {
   const { projectId } = useParams<{ projectId: string }>();
-  const [activeProject, setActiveProject] = useState<Project | null>(null);
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [loading, setLoading] = useState(true);
-  const { socket } = useSocketStore();
-  const { user } = useAuth();
-  const [cursors, setCursors] = useState<Map<string, Cursor>>(new Map());
-  const { call, setCall, answerCall, callUser, leaveCall, callAccepted } =
-    useCallStore();
+  const navigate = useNavigate(); // For redirecting on error
   const { toast } = useToast();
+
+  const { joinProject, leaveProject } = useSocketStore();
+  const { activeProject, initializeProject, clearProject, moveCursor } =
+    useProjectStore();
+  const {
+    init: initCallStore,
+    cleanup: cleanupCallStore,
+    status: callStatus,
+    endCall: endCallAction,
+  } = useCallStore();
+  const {
+    init: initChatStore,
+    cleanup: cleanupChatStore,
+    clearMessages,
+  } = useChatStore();
 
   useEffect(() => {
     if (!projectId) return;
+    let isMounted = true;
 
-    const fetchData = async () => {
-      setLoading(true);
+    const setupWorkspace = async () => {
       try {
         const [projectData, tasksData] = await Promise.all([
           getProjectById(projectId),
           getTasks(projectId),
         ]);
-        setActiveProject(projectData);
-        setTasks(tasksData);
+        if (isMounted) {
+          initializeProject(projectData, tasksData);
+          joinProject(projectId);
+          initChatStore();
+          initCallStore();
+        }
       } catch (error) {
-        console.error("Failed to fetch project data:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchData();
-  }, [projectId]);
-
-  const handleTasksUpdate = (updatedTasks: Task[]) => {
-    setTasks(updatedTasks);
-  };
-
-  const handleMemberAdded = (updatedProject: Project) => {
-    setActiveProject(updatedProject);
-  };
-
-  const handleMouseMove = useCallback(
-    throttle((e: MouseEvent<HTMLDivElement>) => {
-      if (socket && projectId) {
-        socket.emit("cursor:move", {
-          projectId,
-          position: { x: e.clientX, y: e.clientY },
-        });
-      }
-    }, 100),
-    [socket, projectId]
-  );
-
-  useEffect(() => {
-    if (!socket) return;
-
-    const handleCursorMove = (data: Cursor) => {
-      if (data.user.id === user?.id) return;
-      setCursors((prev) => new Map(prev).set(data.user.id, data));
-    };
-
-    const handleIncomingCall = (data: { from: any; signal: any }) => {
-      setCall({ isReceivingCall: true, from: data.from, signal: data.signal });
-      toast({
-        title: "Incoming Call",
-        description: `${data.from.name} is calling you.`,
-        // The action now directly triggers `answerCall` from the store
-        action: <Button onClick={answerCall}>Answer</Button>,
-        duration: 15000,
-      });
-    };
-
-    const handleUserOnline = (data: { id: string; name: string }) => {
-      if (data.id !== user?.id) {
-        toast({
-          title: "User Joined",
-          description: `${data.name} is now online.`,
-        });
+        toast({ variant: "destructive", title: "Failed to load project" });
+        navigate("/dashboard");
       }
     };
 
-    const handleUserOffline = (data: { id: string }) => {
-      if (data.id !== user?.id) {
-        setCursors((prev) => {
-          const newCursors = new Map(prev);
-          newCursors.delete(data.id);
-          return newCursors;
-        });
-        toast({ title: "User Left", description: `A user has gone offline.` });
-      }
-    };
-
-    socket.on("cursor:move", handleCursorMove);
-    socket.on("call:incoming", handleIncomingCall);
-    socket.on("user:online", handleUserOnline);
-    socket.on("user:offline", handleUserOffline);
+    setupWorkspace();
 
     return () => {
-      socket.off("cursor:move", handleCursorMove);
-      socket.off("call:incoming", handleIncomingCall);
-      socket.off("user:online", handleUserOnline);
-      socket.off("user:offline", handleUserOffline);
+      isMounted = false;
+      leaveProject(projectId);
+      clearProject();
+      cleanupChatStore();
+      cleanupCallStore();
+      clearMessages();
     };
-  }, [socket, user?.id, setCall, toast, answerCall]);
+  }, [
+    projectId,
+    initializeProject,
+    joinProject,
+    leaveProject,
+    clearProject,
+    initChatStore,
+    cleanupChatStore,
+    initCallStore,
+    cleanupCallStore,
+    clearMessages,
+    navigate,
+    toast,
+  ]);
 
-  const handleStartCall = () => {
-    const onlineUsers = useSocketStore.getState().onlineUsers;
-    const otherUsers = onlineUsers.filter((id) => id !== user?.id);
-    if (otherUsers.length > 0) {
-      // Directly call the store action
-      callUser(otherUsers[0]);
-    } else {
-      toast({
-        variant: "destructive",
-        title: "No one else is online to call.",
-      });
-    }
-  };
+  const handleMouseMove = useCallback(
+    throttle((e: React.MouseEvent<HTMLDivElement>) => {
+      moveCursor({ x: e.clientX, y: e.clientY });
+    }, 100),
+    [moveCursor]
+  );
 
-  // The single source of truth for closing the dialog is the `leaveCall` action.
-  const handleCloseCallDialog = useCallback(() => {
-    leaveCall();
-  }, [leaveCall]);
-
-  if (loading) return <p className="text-center p-8">Loading project...</p>;
-  if (!activeProject)
-    return <p className="text-center p-8">Project not found.</p>;
+  if (!activeProject) {
+    return <div className="text-center p-8">Loading project...</div>;
+  }
 
   return (
     <div
       className="flex h-screen bg-gray-100 dark:bg-gray-900 overflow-hidden relative"
       onMouseMove={handleMouseMove}
     >
-      {Array.from(cursors.values()).map((cursor) => (
-        <div
-          key={cursor.user.id}
-          className="absolute z-50 pointer-events-none transition-transform duration-75 linear"
-          style={{
-            transform: `translate3d(${cursor.position.x}px, ${cursor.position.y}px, 0)`,
-          }}
-        >
-          {/* SVG Cursor */}
-          <svg
-            width="24"
-            height="24"
-            viewBox="0 0 24 24"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-            className="text-blue-500"
-          >
-            <path
-              d="M5.63604 5.63604C7.19839 4.07368 9.47463 3.5 12 3.5C14.5254 3.5 16.8016 4.07368 18.364 5.63604C19.9263 7.19839 20.5 9.47463 20.5 12C20.5 14.5254 19.9263 16.8016 18.364 18.364C16.8016 19.9263 14.5254 20.5 12 20.5C9.47463 20.5 7.19839 19.9263 5.63604 18.364C4.07368 16.8016 3.5 14.5254 3.5 12C3.5 9.47463 4.07368 7.19839 5.63604 5.63604Z"
-              stroke="white"
-              strokeWidth="2"
-            />
-            <path
-              d="M5.63604 5.63604C7.19839 4.07368 9.47463 3.5 12 3.5C14.5254 3.5 16.8016 4.07368 18.364 5.63604C19.9263 7.19839 20.5 9.47463 20.5 12C20.5 14.5254 19.9263 16.8016 18.364 18.364C16.8016 19.9263 14.5254 20.5 12 20.5C9.47463 20.5 7.19839 19.9263 5.63604 18.364C4.07368 16.8016 3.5 14.5254 3.5 12C3.5 9.47463 4.07368 7.19839 5.63604 5.63604Z"
-              fill="currentColor"
-            />
-          </svg>
-          <span className="ml-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded-full">
-            {cursor.user.name}
-          </span>
-        </div>
-      ))}
+      <CursorsOverlay />
       <div className="flex-1 flex flex-col overflow-hidden">
-        <Header onStartCall={handleStartCall} />
+        <Header showCallButton={true} />
         <main className="flex flex-1 p-4 gap-4 overflow-hidden">
           <div className="w-64 flex-shrink-0 bg-white dark:bg-gray-800 rounded shadow p-4 overflow-auto">
-            <ProjectDetails
-              project={activeProject}
-              onMemberAdded={handleMemberAdded}
-            />
+            <ProjectDetails project={activeProject} />
           </div>
           <div className="flex-1 bg-transparent rounded p-4 overflow-auto">
-            <KanbanBoard tasks={tasks} onTasksUpdate={handleTasksUpdate} />
+            <KanbanBoard />
           </div>
           <div className="w-80 flex-shrink-0 flex flex-col gap-4">
             <ChatBox projectId={projectId!} />
@@ -208,8 +168,8 @@ const WorkspaceLayout = () => {
         </main>
       </div>
       <CallDialog
-        isOpen={call.isReceivingCall || callAccepted}
-        onClose={handleCloseCallDialog}
+        isOpen={callStatus !== "idle" && callStatus !== "failed"}
+        onClose={endCallAction}
       />
     </div>
   );

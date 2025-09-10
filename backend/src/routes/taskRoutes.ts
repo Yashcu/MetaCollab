@@ -1,13 +1,20 @@
 import { Router } from "express";
 import { protect } from "../middlewares/authMiddleware";
-import { updateTask, deleteTask, getTaskById, reorderTasks } from "../controllers/taskController";
+import {
+  createTask,
+  updateTask,
+  deleteTask,
+} from "../controllers/taskController";
+import { taskValidator } from "../utils/validators";
+import { validateRequest } from "../middlewares/validationMiddleware";
 
-const router = Router();
+const router = Router({ mergeParams: true });
 router.use(protect);
 
-router.post('/reorder', reorderTasks);
-router.route('/:id').get(getTaskById).put(updateTask).delete(deleteTask);
+router.post("/", taskValidator, validateRequest, createTask);
+
+router.put("/:taskId", taskValidator, validateRequest, updateTask);
+
+router.delete("/:taskId", deleteTask);
 
 export default router;
-
-

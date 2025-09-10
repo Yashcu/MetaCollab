@@ -1,7 +1,37 @@
-export const successResponse = (res: any, data: any, message = "Success", code = 200) => {
-  return res.status(code).json({ success: true, message, data });
+// An alternative way to structure apiResponse.ts
+
+import { Response } from 'express';
+
+class ApiResponse<T> {
+  public readonly success: boolean;
+  public readonly message: string;
+  public readonly data?: T;
+  public readonly errors?: unknown;
+
+  constructor(success: boolean, message: string, data?: T, errors?: unknown) {
+    this.success = success;
+    this.message = message;
+    if (data) this.data = data;
+    if (errors) this.errors = errors;
+  }
+}
+
+export const sendSuccess = <T>(
+  res: Response,
+  data: T,
+  message = 'Success',
+  statusCode = 200
+) => {
+  const response = new ApiResponse(true, message, data);
+  return res.status(statusCode).json(response);
 };
 
-export const errorResponse = (res: any, message = "Error", code = 500, errors?: any) => {
-  return res.status(code).json({ success: false, message, errors });
+export const sendError = (
+  res: Response,
+  message = 'Error',
+  statusCode = 500,
+  errors?: unknown
+) => {
+  const response = new ApiResponse(false, message, undefined, errors);
+  return res.status(statusCode).json(response);
 };

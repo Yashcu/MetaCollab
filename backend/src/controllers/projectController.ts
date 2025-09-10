@@ -1,150 +1,167 @@
-import { Request, Response } from "express";
-import { Project } from "../models/Project";
-import { successResponse, errorResponse } from "../utils/apiResponse";
-import { Task } from "../models/Task";
-import { User } from "../models/User";
+import { Request, Response, NextFunction } from 'express';
+import { Project } from '../models/Project';
+import { Task } from '../models/Task';
+import { User } from '../models/User';
+import { Invitation } from '../models/Invitation';
+import { sendSuccess } from '../utils/apiResponse';
+import { asyncHandler } from '../utils/asyncHandler';
+import { AppError } from '../utils/appError';
+import { io } from '../server';
+import { onlineUsers } from '../socket';
+import _ from 'lodash';
 
-// Create a project
-export const createProject = async (req: Request, res: Response) => {
-  try {
-    const { name, description } = req.body;
-    if (!req.user || !('userId' in req.user)) {
-      return errorResponse(res, "Not authorized", 401);
-    }
-    const owner = req.user.userId;
+export const createProject = asyncHandler(async (req: Request, res: Response) => {
+  const { name, description } = req.body;
+  const ownerId = req.user!.userId;
 
-    // When creating a project, the owner is also a member by default
-    const project = await Project.create({ name, description, owner, members: [owner] });
-    successResponse(res, project, "Project created", 201);
-  } catch (err) {
-    errorResponse(res, "Failed to create project", 500, err);
+  const projectDocument = await Project.create({
+    name,
+    description,
+    owner: ownerId,
+    members: [ownerId],
+  });
+
+  const project = await projectDocument.populate('owner members', 'name email avatarUrl');
+
+  const ownerSocketId = onlineUsers.get(ownerId);
+  if (ownerSocketId) {
+    io.to(ownerSocketId).emit('dashboard:refetch');
   }
-};
 
-export const getTasksByProjectId = async (req: Request, res: Response) => {
-  try {
-    const { projectId } = req.params;
-    const tasks = await Task.find({ project: projectId })
-      .sort('order')
-      .populate("assignee", "name");
-    successResponse(res, tasks, "Tasks for project fetched");
-  } catch (err) {
-    errorResponse(res, "Failed to fetch tasks for project", 500, err);
+  sendSuccess(res, project, 'Project created successfully', 201);
+});
+
+export const getAllProjects = asyncHandler(async (req: Request, res: Response) => {
+  const userId = req.user!.userId;
+  const projects = await Project.find({ members: userId }).populate('owner members', 'name email avatarUrl');
+  sendSuccess(res, projects, 'Projects fetched successfully');
+});
+
+export const getProjectById = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+  const userId = req.user!.userId;
+  const project = await Project.findOne({ _id: req.params.projectId, members: userId })
+    .populate('owner members', 'name email avatarUrl');
+
+  if (!project) {
+    return next(new AppError('Project not found or you do not have access', 404));
   }
-};
+  sendSuccess(res, project, 'Project fetched successfully');
+});
 
-// Get all projects
-export const getAllProjects = async (req: Request, res: Response) => {
-  try {
-    if (!req.user || !('userId' in req.user)) {
-      return errorResponse(res, "Not authorized", 401);
-    }
-    const userId = req.user.userId;
+export const updateProject = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+  const userId = req.user!.userId;
+  const { projectId } = req.params;
+  const filteredBody = _.pick(req.body, ['name', 'description']);
 
-    // FIX: Removed the second argument from populate to get full user objects
-    const projects = await Project.find({ members: userId }).populate("owner members");
-    successResponse(res, projects, "Projects fetched");
-  } catch (err) {
-    errorResponse(res, "Failed to fetch projects", 500, err);
+  const updatedProject = await Project.findOneAndUpdate(
+    { _id: projectId, owner: userId },
+    filteredBody,
+    { new: true, runValidators: true }
+  ).populate('owner members', 'name email avatarUrl');
+
+  if (!updatedProject) {
+    return next(new AppError('Project not found or you do not have access to modify it', 404));
   }
-};
 
-// Get project by ID
-// ... (imports and other functions)
+  io.to(projectId).emit('project:updated', updatedProject);
 
-// Get project by ID
-export const getProjectById = async (req: Request, res: Response) => {
-  try {
-    if (!req.user || !('userId' in req.user)) {
-      return errorResponse(res, "Not authorized", 401);
-    }
-    const userId = req.user.userId;
+  sendSuccess(res, updatedProject, 'Project updated successfully');
+});
 
-    const project = await Project.findById(req.params.id);
+export const deleteProject = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+  const userId = req.user!.userId;
+  const { projectId } = req.params;
 
-    if (!project || !project.members.some(memberId => memberId.toString() === userId)) {
-      return errorResponse(res, "Project not found or access denied", 404);
-    }
+  const project = await Project.findOneAndDelete({ _id: projectId, owner: userId });
 
-    // If the check passes, populate the fields and send the response.
-    const populatedProject = await project.populate("owner members");
-    successResponse(res, populatedProject, "Project fetched");
-
-  } catch (err) {
-    errorResponse(res, "Failed to fetch project", 500, err);
+  if (!project) {
+    return next(new AppError('Project not found or you are not the owner', 404));
   }
-};
 
-export const addMemberToProject = async (req: Request, res: Response) => {
-    try {
-        if (!req.user || !('userId' in req.user)) {
-            return errorResponse(res, "Not authorized", 401);
-        }
-        const requesterId = req.user.userId;
-        const { projectId } = req.params;
-        const { email } = req.body;
+  io.to(projectId).emit('project:deleted', { projectId });
 
-        const project = await Project.findById(projectId);
-        if (!project) {
-            return errorResponse(res, "Project not found", 404);
-        }
+  sendSuccess(res, null, 'Project deleted successfully');
+});
 
-        // Security Check: Only the project owner can add members
-        if (project.owner.toString() !== requesterId) {
-            return errorResponse(res, "Only the project owner can add members", 403);
-        }
+export const inviteMember = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+  const ownerId = req.user!.userId;
+  const { projectId } = req.params;
+  const { email } = req.body;
 
-        const userToAdd = await User.findOne({ email });
-        if (!userToAdd) {
-            return errorResponse(res, "User with that email not found", 404);
-        }
+  const project = await Project.findOne({ _id: projectId, owner: ownerId });
+  if (!project) return next(new AppError('Project not found or you are not the owner', 404));
 
-        // Add user to members array if not already present
-        await Project.findByIdAndUpdate(projectId, { $addToSet: { members: userToAdd._id } });
+  const userToInvite = await User.findOne({ email });
+  if (!userToInvite) return next(new AppError('User with that email not found', 404));
 
-        const updatedProject = await Project.findById(projectId).populate("owner members", "name email");
-
-        successResponse(res, updatedProject, "Member added successfully");
-
-    } catch (err) {
-        errorResponse(res, "Failed to add member", 500, err);
-    }
-}
-
-// Update project
-export const updateProject = async (req: Request, res: Response) => {
-  try {
-    const project = await Project.findByIdAndUpdate(req.params.id, req.body, { new: true });
-    if (!project) return errorResponse(res, "Project not found", 404);
-    successResponse(res, project, "Project updated");
-  } catch (err) {
-    errorResponse(res, "Failed to update project", 500, err);
+  if (project.members.includes(userToInvite._id)) {
+     return next(new AppError('User is already a member of this project', 400));
   }
-};
 
-// Delete project
-// ... (imports and other functions)
-
-// Delete project
-export const deleteProject = async (req: Request, res: Response) => {
-  try {
-    if (!req.user || !('userId' in req.user)) {
-        return errorResponse(res, "Not authorized", 401);
-    }
-    const requesterId = req.user.userId;
-    const project = await Project.findById(req.params.id);
-
-    if (!project) {
-        return errorResponse(res, "Project not found", 404);
-    }
-
-    if (project.owner.toString() !== requesterId) {
-        return errorResponse(res, "Only the project owner can delete this project", 403);
-    }
-
-    await Project.findByIdAndDelete(req.params.id);
-    successResponse(res, null, "Project deleted");
-  } catch (err) {
-    errorResponse(res, "Failed to delete project", 500, err);
+  const existingInvite = await Invitation.findOne({ project: projectId, recipient: userToInvite._id, status: 'pending' });
+  if (existingInvite) {
+      return next(new AppError('An invitation has already been sent to this user.', 400));
   }
-};
+
+  await Invitation.create({
+      project: projectId,
+      inviter: ownerId,
+      recipient: userToInvite._id
+  });
+
+  const recipientSocketId = onlineUsers.get(userToInvite._id.toString());
+  if (recipientSocketId) {
+    io.to(recipientSocketId).emit('invitation:new');
+  }
+
+  sendSuccess(res, null, 'Invitation sent successfully');
+});
+
+
+export const getTasksByProjectId = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+  const userId = req.user!.userId;
+  const { projectId } = req.params;
+
+  const project = await Project.findOne({ _id: projectId, members: userId });
+  if (!project) {
+    return next(new AppError('Project not found or you do not have access', 404));
+  }
+
+  const tasks = await Task.find({ project: projectId }).sort('order').populate('assignee', 'name email avatarUrl');
+  sendSuccess(res, tasks, 'Tasks fetched successfully');
+});
+
+export const removeMemberFromProject = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+  const ownerId = req.user!.userId;
+  const { projectId, memberId } = req.params;
+
+  const projectOwnerCheck = await Project.findOne({ _id: projectId, owner: ownerId });
+  if (!projectOwnerCheck) {
+    return next(new AppError('Project not found or you are not the owner', 404));
+  }
+  if (projectOwnerCheck.owner.toString() === memberId) {
+    return next(new AppError("You cannot remove yourself as the owner.", 400));
+  }
+
+  const updatedProject = await Project.findByIdAndUpdate(
+    projectId,
+    { $pull: { members: memberId } },
+    { new: true }
+  ).populate('owner members', 'name email avatarUrl');
+
+  if (!updatedProject) {
+    return next(new AppError('Project not found.', 404));
+  }
+
+  io.to(updatedProject.id.toString()).emit('project:updated', updatedProject);
+
+  const kickedUserSocketId = onlineUsers.get(memberId);
+  if (kickedUserSocketId) {
+    io.to(kickedUserSocketId).emit('kicked:from_project', {
+      projectId: updatedProject.id,
+      projectName: updatedProject.name,
+    });
+  }
+
+  sendSuccess(res, updatedProject, 'Member removed successfully');
+});

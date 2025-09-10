@@ -1,22 +1,32 @@
+import React, { Suspense } from "react";
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
-import LoginPage from "./pages/LoginPage";
-import SignupPage from "./pages/SignupPage";
-import DashboardPage from "./pages/DashboardPage";
-import ProfilePage from "./pages/ProfilePage";
-// import LeaderboardPage from "./pages/LeaderboardPage"; // <-- REMOVED
-import AdminPage from "./pages/AdminPage";
-import PrivateRoute from "./components/PrivateRoute";
-import AdminRoute from "./components/AdminRoute"; // <-- IMPORT AdminRoute
-import MainLayout from "./components/MainLayout";
 import { Toaster } from "./components/ui/toaster";
-import WorkspaceLayout from "./pages/WorkspaceLayout";
+import { Skeleton } from "./components/ui/skeleton";
+
+const PageLoader = () => (
+  <div className="flex h-screen w-screen items-center justify-center">
+    <div className="flex flex-col items-center gap-4">
+      <Skeleton className="h-12 w-12 rounded-full" />
+      <Skeleton className="h-4 w-48" />
+    </div>
+  </div>
+);
+
+const LoginPage = React.lazy(() => import("./pages/LoginPage"));
+const SignupPage = React.lazy(() => import("./pages/SignupPage"));
+const DashboardPage = React.lazy(() => import("./pages/DashboardPage"));
+const ProfilePage = React.lazy(() => import("./pages/ProfilePage"));
+const AdminPage = React.lazy(() => import("./pages/AdminPage"));
+const WorkspaceLayout = React.lazy(() => import("./pages/WorkspaceLayout"));
+
+import PrivateRoute from "./components/PrivateRoute";
+import AdminRoute from "./components/AdminRoute";
+import MainLayout from "./components/MainLayout";
 
 const router = createBrowserRouter([
-  // Public routes
   { path: "/login", element: <LoginPage /> },
   { path: "/signup", element: <SignupPage /> },
 
-  // Private routes for all authenticated users
   {
     path: "/",
     element: <PrivateRoute />,
@@ -27,20 +37,17 @@ const router = createBrowserRouter([
           { path: "/", element: <DashboardPage /> },
           { path: "dashboard", element: <DashboardPage /> },
           { path: "profile", element: <ProfilePage /> },
-          // { path: "leaderboard", element: <LeaderboardPage /> }, // <-- REMOVED
         ],
       },
-      // Admin-only routes
       {
-        element: <AdminRoute />, // <-- WRAP admin routes
+        element: <AdminRoute />,
         children: [
           {
-            element: <MainLayout />, // Use the same layout
+            element: <MainLayout />,
             children: [{ path: "admin", element: <AdminPage /> }],
           },
         ],
       },
-      // Workspace layout remains a top-level route
       {
         path: "project/:projectId",
         element: <WorkspaceLayout />,
@@ -52,7 +59,9 @@ const router = createBrowserRouter([
 function App() {
   return (
     <>
-      <RouterProvider router={router} />
+      <Suspense fallback={<PageLoader />}>
+        <RouterProvider router={router} />
+      </Suspense>
       <Toaster />
     </>
   );

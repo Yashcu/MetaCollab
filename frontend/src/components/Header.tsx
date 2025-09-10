@@ -8,47 +8,72 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useNavigate } from "react-router-dom";
-import { Sun, Moon, Phone, ShieldCheck } from "lucide-react"; // <-- Import ShieldCheck
+import { useNavigate, Link } from "react-router-dom";
+import { Sun, Moon, Phone, ShieldCheck } from "lucide-react";
 import { useTheme } from "@/hooks/useTheme";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
+import { useCallStore } from "@/state/callStore";
+import { useSocketStore } from "@/state/socketStore";
+import { useToast } from "./ui/use-toast";
+import InvitationDropdown from "./InvitationDropdown";
 
 interface HeaderProps {
-  onStartCall?: () => void;
+  showCallButton?: boolean;
 }
 
-const Header = ({ onStartCall }: HeaderProps) => {
+const Header = ({ showCallButton = false }: HeaderProps) => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const { theme, setTheme } = useTheme();
+  const { toast } = useToast();
+
+  const { projectUsers } = useSocketStore();
+  const { user: authUser } = useAuth();
+  const { startMedia, placeCall } = useCallStore();
 
   const handleLogout = () => {
     logout();
     navigate("/login");
   };
 
+  const handleStartCall = async () => {
+    if (!authUser) return;
+    const otherUsers = projectUsers.filter((p) => p.userId !== authUser.id);
+
+    if (otherUsers.length > 0) {
+      toast({ description: "Starting call..." });
+      await startMedia();
+      placeCall(otherUsers[0].userId, otherUsers[0].userName);
+    } else {
+      toast({
+        variant: "destructive",
+        title: "No one to call",
+        description: "You are the only one in the project right now.",
+      });
+    }
+  };
+
   return (
     <header className="flex items-center justify-between px-6 py-2 bg-white dark:bg-gray-800 border-b dark:border-gray-700">
-      {/* App Title/Logo */}
-      <div
+      <Link
+        to="/dashboard"
         className="text-xl font-semibold text-gray-800 dark:text-white"
-        onClick={() => navigate("/dashboard")}
-        style={{ cursor: "pointer" }}
       >
         MetaCollab
-      </div>
+      </Link>
 
-      <div className="flex items-center gap-4">
-        {onStartCall && (
+      <div className="flex items-center gap-2">
+        {showCallButton && (
           <Button
             variant="ghost"
             size="icon"
-            onClick={onStartCall}
+            onClick={handleStartCall}
             aria-label="Start call"
           >
             <Phone className="h-5 w-5" />
           </Button>
         )}
+        <InvitationDropdown />
         <Button
           variant="ghost"
           size="icon"
@@ -85,7 +110,6 @@ const Header = ({ onStartCall }: HeaderProps) => {
             <DropdownMenuItem onClick={() => navigate("/profile")}>
               Profile
             </DropdownMenuItem>
-            {/* **UI UPDATE**: Conditional Admin Panel link */}
             {user?.role === "admin" && (
               <DropdownMenuItem onClick={() => navigate("/admin")}>
                 <ShieldCheck className="mr-2 h-4 w-4" />

@@ -3,57 +3,30 @@ import { Input } from "./ui/input";
 import { Button } from "./ui/button";
 import { Send } from "lucide-react";
 import { useSocketStore } from "@/state/socketStore";
+import { useChatStore } from "@/state/chatStore";
 import { useAuth } from "@/hooks/useAuth";
-
-// A more specific type for user data coming from sockets
-interface SocketUser {
-  id: string;
-  name: string;
-}
-
-interface ChatMessage {
-  user: SocketUser;
-  message: string;
-  timestamp: string;
-}
 
 interface Props {
   projectId: string;
 }
 
 const ChatBox = ({ projectId }: Props) => {
-  const { socket } = useSocketStore();
   const { user } = useAuth();
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const { messages, sendMessage } = useChatStore();
+  const { roomStatus } = useSocketStore();
+  const isChatDisabled = roomStatus !== "active";
+
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!socket || !projectId) return;
-
-    socket.emit("project:join", projectId);
-
-    const handleNewMessage = (newMessage: ChatMessage) => {
-      setMessages((prev) => [...prev, newMessage]);
-    };
-
-    socket.on("chat:message", handleNewMessage);
-
-    return () => {
-      socket.off("chat:message", handleNewMessage);
-    };
-  }, [socket, projectId]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const handleSendMessage = () => {
-    if (input.trim() && socket && user) {
-      socket.emit("chat:message", {
-        projectId,
-        message: input,
-      });
+  const handleSendMessage = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (input.trim() && !isChatDisabled) {
+      sendMessage(projectId, input);
       setInput("");
     }
   };
@@ -63,12 +36,15 @@ const ChatBox = ({ projectId }: Props) => {
       <h3 className="font-bold text-lg mb-2 text-gray-900 dark:text-gray-100">
         Project Chat
       </h3>
-      <div className="flex-1 overflow-y-auto mb-2 p-2 bg-gray-50 dark:bg-gray-900 rounded">
-        {messages.map((msg, i) => (
+      <div
+        aria-live="polite"
+        className="flex-1 overflow-y-auto mb-2 p-2 bg-gray-50 dark:bg-gray-900 rounded"
+      >
+        {messages.map((msg) => (
           <div
-            key={i}
+            key={`${msg.timestamp}-${msg.user.id}`}
             className={`p-2 rounded-lg mb-2 text-sm max-w-xs ${
-              msg.user.id === user?.id // Corrected comparison
+              msg.user.id === user?.id
                 ? "bg-blue-100 dark:bg-blue-900/50 ml-auto"
                 : "bg-gray-200 dark:bg-gray-700/50"
             }`}
@@ -78,24 +54,25 @@ const ChatBox = ({ projectId }: Props) => {
           </div>
         ))}
         {messages.length === 0 && (
-          <p className="text-center text-sm text-gray-500">No messages yet.</p>
+          <p className="text-center text-sm text-gray-500">
+            No messages yet. Say hi!
+          </p>
         )}
         <div ref={messagesEndRef} />
       </div>
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          handleSendMessage();
-        }}
-        className="flex gap-2"
-      >
+      <form onSubmit={handleSendMessage} className="flex gap-2">
         <Input
           type="text"
-          placeholder="Type a message..."
+          placeholder={
+            isChatDisabled
+              ? "Waiting for others to join..."
+              : "Type a message..."
+          }
           value={input}
           onChange={(e) => setInput(e.target.value)}
+          disabled={isChatDisabled}
         />
-        <Button type="submit" size="icon">
+        <Button type="submit" size="icon" disabled={isChatDisabled}>
           <Send className="h-4 w-4" />
         </Button>
       </form>
