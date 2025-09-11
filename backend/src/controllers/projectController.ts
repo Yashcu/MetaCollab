@@ -6,7 +6,7 @@ import { Invitation } from '../models/Invitation';
 import { sendSuccess } from '../utils/apiResponse';
 import { asyncHandler } from '../utils/asyncHandler';
 import { AppError } from '../utils/appError';
-import { io } from '../server';
+import { getIO } from "../socketInstance";
 import { onlineUsers } from '../socket';
 import _ from 'lodash';
 
@@ -25,6 +25,7 @@ export const createProject = asyncHandler(async (req: Request, res: Response) =>
 
   const ownerSocketId = onlineUsers.get(ownerId);
   if (ownerSocketId) {
+    const io = getIO();
     io.to(ownerSocketId).emit('dashboard:refetch');
   }
 
@@ -63,6 +64,7 @@ export const updateProject = asyncHandler(async (req: Request, res: Response, ne
     return next(new AppError('Project not found or you do not have access to modify it', 404));
   }
 
+  const io = getIO();
   io.to(projectId).emit('project:updated', updatedProject);
 
   sendSuccess(res, updatedProject, 'Project updated successfully');
@@ -78,6 +80,7 @@ export const deleteProject = asyncHandler(async (req: Request, res: Response, ne
     return next(new AppError('Project not found or you are not the owner', 404));
   }
 
+  const io = getIO();
   io.to(projectId).emit('project:deleted', { projectId });
 
   sendSuccess(res, null, 'Project deleted successfully');
@@ -111,6 +114,7 @@ export const inviteMember = asyncHandler(async (req: Request, res: Response, nex
 
   const recipientSocketId = onlineUsers.get(userToInvite._id.toString());
   if (recipientSocketId) {
+    const io = getIO();
     io.to(recipientSocketId).emit('invitation:new');
   }
 
@@ -153,6 +157,7 @@ export const removeMemberFromProject = asyncHandler(async (req: Request, res: Re
     return next(new AppError('Project not found.', 404));
   }
 
+  const io = getIO();
   io.to(updatedProject.id.toString()).emit('project:updated', updatedProject);
 
   const kickedUserSocketId = onlineUsers.get(memberId);
