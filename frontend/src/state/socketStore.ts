@@ -18,6 +18,7 @@ interface SocketState {
   status: ConnectionStatus;
   roomStatus: RoomStatus;
   projectUsers: ProjectUser[];
+  lastJoinedProjectId: string | null;
   connect: () => void;
   disconnect: () => void;
   joinProject: (projectId: string) => void;
@@ -29,6 +30,7 @@ export const useSocketStore = create<SocketState>((set, get) => ({
   status: "idle",
   roomStatus: "idle",
   projectUsers: [],
+  lastJoinedProjectId: null,
 
   connect: () => {
     if (get().socket) return;
@@ -48,6 +50,11 @@ export const useSocketStore = create<SocketState>((set, get) => ({
     newSocket.on("connect", () => {
       set({ status: "connected" });
       console.log("✅ Socket connected:", newSocket.id);
+
+      const lastJoining = get().lastJoinedProjectId;
+      if (lastJoining) {
+        get().joinProject(lastJoining);
+      }
     });
 
     newSocket.on("disconnect", () => {
@@ -86,6 +93,7 @@ export const useSocketStore = create<SocketState>((set, get) => ({
         }
       }
     );
+    set({ lastJoinedProjectId: projectId });
   },
 
   leaveProject: (projectId) => {

@@ -1,11 +1,11 @@
-// src/state/projectStore.ts
-
+import { useEffect } from "react";
+import { useSocketStore } from "./socketStore";
+import { getProjects } from "@/services/projectService";
 import { create } from 'zustand';
 import { Project, Task } from '@/types';
 import { reorderTasks as reorderTasksService } from '@/services/taskService';
 import { toast } from '@/components/ui/use-toast';
 import debounce from 'lodash/debounce';
-import { useSocketStore } from './socketStore';
 import { useAuthStore } from '@/state/authStore';
 
 const debouncedReorder = debounce((projectId: string, payload: any[], originalTasks: Task[], set) => {
@@ -22,9 +22,11 @@ interface Cursor {
 
 interface ProjectState {
   activeProject: Project | null;
+  projects: Project[];
   tasks: Task[];
   cursors: Map<string, Omit<Cursor, "user">>;
 
+  setProjects: (projects: Project[]) => void;
   initializeProject: (project: Project, tasks: Task[]) => void;
   setActiveProject: (project: Project) => void;
   setTasks: (tasks: Task[]) => void;
@@ -37,6 +39,7 @@ interface ProjectState {
 
 export const useProjectStore = create<ProjectState>((set, get) => ({
   activeProject: null,
+  projects: [],
   tasks: [],
   cursors: new Map(),
 
@@ -52,6 +55,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   setTasks: (tasks) => {
     set({ tasks });
   },
+
+  setProjects: (projects) => set({ projects }),
 
   moveCursor: (position) => {
     const { socket } = useSocketStore.getState();
@@ -130,3 +135,21 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     socket.off('cursor:leave');
   },
 }));
+
+export const useDashboardRealtime = () => {
+  const { socket } = useSocketStore();
+  const setProjects = useProjectStore(s => s.setProjects);
+
+  useEffect(() => {
+    if (!socket) return;
+    const onRefetch = async () => {
+      const projects = await getProjects();
+      setProjects(projects);
+      toast({ description: "Project list updated!" });
+    };
+    socket.on("dashboard:refetch", onRefetch);
+    return () => {
+      socket.off("dashboard:refetch", onRefetch);
+    };
+  }, [socket, setProjects]);
+};

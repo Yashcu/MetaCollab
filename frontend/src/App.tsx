@@ -23,6 +23,11 @@ import PrivateRoute from "./components/PrivateRoute";
 import AdminRoute from "./components/AdminRoute";
 import MainLayout from "./components/MainLayout";
 
+import { useDashboardRealtime } from "@/state/projectStore";
+import { useInvitationRealtime } from "@/state/invitationStore";
+import { useKickedFromProject } from "@/state/authStore";
+import { ConnectionStatusOverlay } from "@/components/ConnectionStatusOverlay";
+
 const router = createBrowserRouter([
   { path: "/login", element: <LoginPage /> },
   { path: "/signup", element: <SignupPage /> },
@@ -57,8 +62,12 @@ const router = createBrowserRouter([
 ]);
 
 function App() {
+  useDashboardRealtime();
+  useInvitationRealtime();
+  useKickedFromProject();
   return (
     <>
+      <ConnectionStatusOverlay />
       <Suspense fallback={<PageLoader />}>
         <RouterProvider router={router} />
       </Suspense>
