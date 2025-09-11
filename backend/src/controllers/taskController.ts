@@ -139,7 +139,9 @@ export const deleteTask = asyncHandler(
 
 export const reorderTasks = asyncHandler(
   async (req: Request, res: Response, next: NextFunction) => {
+    const userId = req.user!.userId;
     const { projectId } = req.params;
+    await verifyProjectMembership(projectId, userId);
     const { tasks: updates, operationId } = req.body;
 
     if (!updates || !Array.isArray(updates)) {

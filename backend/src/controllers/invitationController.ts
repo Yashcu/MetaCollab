@@ -4,7 +4,7 @@ import { Project } from '../models/Project';
 import { sendSuccess } from '../utils/apiResponse';
 import { asyncHandler } from '../utils/asyncHandler';
 import { AppError } from '../utils/appError';
-import { io } from '../server';
+import { getIO } from '../socketInstance';
 import { onlineUsers } from '../socket';
 import { User } from '../models/User';
 
@@ -35,6 +35,7 @@ export const acceptInvitation = asyncHandler(async (req: Request, res: Response,
   await invitation.save();
 
   if (updatedProject) {
+    const io = getIO();
     io.to(updatedProject.id.toString()).emit('project:updated', updatedProject);
 
     const newUser = await User.findById(userId);
@@ -49,6 +50,7 @@ export const acceptInvitation = asyncHandler(async (req: Request, res: Response,
 
   const inviterSocketId = onlineUsers.get(invitation.inviter.toString());
   if (inviterSocketId) {
+    const io = getIO();
     io.to(inviterSocketId).emit('invitation:accepted', {
       projectName: (invitation.project as any).name,
       recipientName: req.user!.name,
@@ -57,6 +59,7 @@ export const acceptInvitation = asyncHandler(async (req: Request, res: Response,
 
   const recipientSocketId = onlineUsers.get(userId);
   if (recipientSocketId) {
+      const io = getIO();
       io.to(recipientSocketId).emit('dashboard:refetch');
   }
 
@@ -76,6 +79,7 @@ export const declineInvitation = asyncHandler(async (req: Request, res: Response
 
   const inviterSocketId = onlineUsers.get(invitation.inviter.toString());
   if (inviterSocketId) {
+    const io = getIO();
     io.to(inviterSocketId).emit('invitation:declined', {
       projectName: (invitation.project as any).name,
       recipientName: req.user!.name,
