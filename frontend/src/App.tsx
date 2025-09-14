@@ -23,9 +23,9 @@ import PrivateRoute from "./components/PrivateRoute";
 import AdminRoute from "./components/AdminRoute";
 import MainLayout from "./components/MainLayout";
 
-import { useDashboardRealtime } from "@/state/projectStore";
-import { useInvitationRealtime } from "@/state/invitationStore";
-import { useKickedFromProject } from "@/state/authStore";
+import { useDashboardRealtime } from "@/hooks/useDashboardRealtime";
+import { useInvitationRealtime } from "@/hooks/useInvitationRealtime";
+import { useKickedFromProject } from "@/hooks/useKickedFromProject";
 import { ConnectionStatusOverlay } from "@/components/ConnectionStatusOverlay";
 
 const router = createBrowserRouter([

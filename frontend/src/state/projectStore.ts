@@ -1,6 +1,4 @@
-import { useEffect } from "react";
 import { useSocketStore } from "./socketStore";
-import { getProjects } from "@/services/projectService";
 import { create } from 'zustand';
 import { Project, Task } from '@/types';
 import { reorderTasks as reorderTasksService } from '@/services/taskService';
@@ -135,21 +133,3 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     socket.off('cursor:leave');
   },
 }));
-
-export const useDashboardRealtime = () => {
-  const { socket } = useSocketStore();
-  const setProjects = useProjectStore(s => s.setProjects);
-
-  useEffect(() => {
-    if (!socket) return;
-    const onRefetch = async () => {
-      const projects = await getProjects();
-      setProjects(projects);
-      toast({ description: "Project list updated!" });
-    };
-    socket.on("dashboard:refetch", onRefetch);
-    return () => {
-      socket.off("dashboard:refetch", onRefetch);
-    };
-  }, [socket, setProjects]);
-};
