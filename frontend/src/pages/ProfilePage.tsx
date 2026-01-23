@@ -82,10 +82,12 @@ const ProfileForm = () => {
               type="email"
               {...register("email")}
               aria-invalid={!!errors.email}
+              disabled
+              className="bg-muted cursor-not-allowed"
             />
-            {errors.email && (
-              <p className="text-sm text-red-500">{errors.email.message}</p>
-            )}
+            <p className="text-xs text-muted-foreground">
+              Email address cannot be changed
+            </p>
           </div>
           <div className="space-y-2">
             <Label htmlFor="avatarUrl">Avatar URL</Label>

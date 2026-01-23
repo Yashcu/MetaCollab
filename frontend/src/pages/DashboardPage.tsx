@@ -1,58 +1,16 @@
-// frontend/src/pages/DashboardPage.tsx
-
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardContent,
-  CardDescription,
-} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { PlusCircle, Trash2 } from "lucide-react";
-import { Link } from "react-router-dom";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
 import SkeletonCard from "@/components/SkeletonCard";
 import { useUIStore } from "@/state/uiStore";
 import { useEffect, useState } from "react";
 import { Project } from "@/types";
-import { useForm } from "react-hook-form";
-import { z } from "zod";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
-  createProject,
   getProjects,
   deleteProject,
 } from "@/services/projectService";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/components/ui/use-toast";
-import { AxiosError } from "axios";
-
-const projectSchema = z.object({
-  name: z.string().min(3, "Project name must be at least 3 characters"),
-  description: z.string().optional(),
-});
-type TProjectSchema = z.infer<typeof projectSchema>;
+import CreateProjectDialog from "@/components/CreateProjectDialog";
+import ProjectCard from "@/components/ProjectCard";
 
 const DashboardPage = () => {
   const { isProjectsLoading, setProjectsLoading } = useUIStore();
@@ -60,15 +18,6 @@ const DashboardPage = () => {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const { user } = useAuth();
   const { toast } = useToast();
-
-  const {
-    register,
-    handleSubmit,
-    formState: { errors, isSubmitting },
-    reset,
-  } = useForm<TProjectSchema>({
-    resolver: zodResolver(projectSchema),
-  });
 
   useEffect(() => {
     const fetchProjects = async () => {
@@ -92,7 +41,7 @@ const DashboardPage = () => {
     };
   }, [setProjectsLoading, toast]);
 
-  const onProjectDelete = async (projectId: string) => {
+  const handleProjectDelete = async (projectId: string) => {
     try {
       await deleteProject(projectId);
       setProjects((p) => p.filter((proj) => proj.id !== projectId));
@@ -102,135 +51,52 @@ const DashboardPage = () => {
     }
   };
 
-  const onProjectCreate = async (data: TProjectSchema) => {
-    try {
-      const newProject = await createProject({
-        name: data.name,
-        description: data.description || "",
-      });
-      setProjects((p) => [newProject, ...p]);
-      reset();
-      setIsCreateDialogOpen(false);
-      toast({ title: "Project Created!" });
-    } catch (error) {
-      const axiosError = error as AxiosError<{ message: string }>;
-      toast({
-        variant: "destructive",
-        title: "Creation Failed",
-        description: axiosError.response?.data?.message,
-      });
-    }
+  const handleProjectCreated = (newProject: Project) => {
+    setProjects((p) => [newProject, ...p]);
   };
 
   return (
-    <div>
-      <div className="flex flex-wrap gap-4 justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold">Dashboard</h1>
-        <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-          <DialogTrigger asChild>
-            <Button aria-label="Create new project">
-              <PlusCircle className="mr-2 h-4 w-4" /> Create Project
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Create a New Project</DialogTitle>
-              <DialogDescription>
-                Give your project a name to get started.
-              </DialogDescription>
-            </DialogHeader>
-            <form
-              onSubmit={handleSubmit(onProjectCreate)}
-              className="grid gap-4 py-4"
-            >
-              <div className="grid gap-2">
-                <Label htmlFor="name">Project Name</Label>
-                <Input
-                  {...register("name")}
-                  id="name"
-                  placeholder="My Awesome Project"
-                />
-                {errors.name && (
-                  <p className="text-sm text-red-500">{errors.name.message}</p>
-                )}
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="description">Description (Optional)</Label>
-                <Input
-                  {...register("description")}
-                  id="description"
-                  placeholder="A brief description of the project."
-                />
-              </div>
-              <DialogFooter>
-                <Button type="submit" disabled={isSubmitting}>
-                  {isSubmitting ? "Creating..." : "Create Project"}
-                </Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
+    <div className="animate-in fade-in duration-500">
+      <div className="flex flex-wrap gap-4 justify-between items-center mb-8">
+        <div>
+          <h1 className="text-4xl font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
+            Dashboard
+          </h1>
+          <p className="text-gray-400 mt-1">Manage your projects and collaborations</p>
+        </div>
+
+        <CreateProjectDialog
+          open={isCreateDialogOpen}
+          onOpenChange={setIsCreateDialogOpen}
+          onProjectCreated={handleProjectCreated}
+        />
       </div>
 
-      <h2 className="text-2xl font-semibold mb-4">Your Projects</h2>
+      <h2 className="text-xl font-semibold mb-6 text-white/80">Your Projects</h2>
+
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         {isProjectsLoading
           ? Array.from({ length: 3 }).map((_, i) => <SkeletonCard key={i} />)
-          : projects.map((p) => (
-              <Card
-                key={p.id}
-                className="relative group hover:shadow-lg transition-shadow h-full flex flex-col"
-              >
-                <Link
-                  to={`/project/${p.id}`}
-                  className="flex flex-col flex-grow"
-                >
-                  <CardHeader>
-                    <CardTitle>{p.name}</CardTitle>
-                    <CardDescription>
-                      {p.description || "No description."}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="flex-grow">
-                    <p className="text-sm text-muted-foreground">
-                      {p.members.length} member(s)
-                    </p>
-                  </CardContent>
-                </Link>
-                {user?.id === p.owner.id && (
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button
-                        variant="destructive"
-                        size="icon"
-                        className="absolute top-2 right-2 h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
-                        aria-label="Delete project"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                          This will permanently delete the "{p.name}" project
-                          and all of its tasks.
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction
-                          onClick={() => onProjectDelete(p.id)}
-                        >
-                          Continue
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
-                )}
-              </Card>
-            ))}
+          : projects.map((p, index) => (
+            <ProjectCard
+              key={p.id}
+              project={p}
+              index={index}
+              isOwner={user?.id === p.owner.id}
+              onDelete={handleProjectDelete}
+            />
+          ))}
       </div>
+
+      {!isProjectsLoading && projects.length === 0 && (
+        <div className="text-center py-20 border border-dashed border-white/10 rounded-2xl bg-white/5">
+          <h3 className="text-xl font-medium text-white mb-2">No projects yet</h3>
+          <p className="text-gray-400 mb-6">Create your first project to get started</p>
+          <Button onClick={() => setIsCreateDialogOpen(true)} className="bg-white text-black hover:bg-gray-200">
+            Create Project
+          </Button>
+        </div>
+      )}
     </div>
   );
 };
