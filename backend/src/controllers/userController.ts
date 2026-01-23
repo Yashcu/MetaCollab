@@ -4,7 +4,7 @@ import { Project } from '@/models/Project';
 import { sendSuccess } from '../utils/apiResponse';
 import { asyncHandler } from '../utils/asyncHandler';
 import { AppError } from '../utils/appError';
-import { io } from '@/server';
+import { getIO } from '../socketInstance';
 import mongoose from 'mongoose';
 import _ from 'lodash';
 
@@ -38,6 +38,7 @@ export const updateUserProfile = asyncHandler(async (req: Request, res: Response
     return next(new AppError('User not found', 404));
   }
 
+  const io = getIO();
   const projects = await Project.find({ members: updatedUser._id });
   for (const project of projects) {
     const populatedProject = await project.populate('owner members', 'name email avatarUrl');
@@ -46,6 +47,7 @@ export const updateUserProfile = asyncHandler(async (req: Request, res: Response
     const tasks = await mongoose.model('Task').find({ project: project.id }).sort('order').populate('assignee', 'name email avatarUrl');
     io.to(project.id).emit('tasks:updated', tasks);
   }
+
 
   sendSuccess(res, updatedUser, 'Profile updated successfully');
 });
@@ -60,7 +62,7 @@ export const changePassword = asyncHandler(async (req: Request, res: Response, n
   const user = await User.findById(req.user.userId).select('+password');
 
   if (!user || !(await user.comparePassword(currentPassword))) {
-     return next(new AppError('Incorrect current password', 401));
+    return next(new AppError('Incorrect current password', 401));
   }
 
   user.password = newPassword;

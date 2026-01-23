@@ -3,6 +3,15 @@ import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import { Toaster } from "./components/ui/toaster";
 import { Skeleton } from "./components/ui/skeleton";
 
+import PrivateRoute from "./components/PrivateRoute";
+import AdminRoute from "./components/AdminRoute";
+import MainLayout from "./components/MainLayout";
+
+import { useDashboardRealtime } from "@/hooks/useDashboardRealtime";
+import { useInvitationRealtime } from "@/hooks/useInvitationRealtime";
+import { useKickedFromProject } from "@/hooks/useKickedFromProject";
+import { ConnectionStatusOverlay } from "@/components/ConnectionStatusOverlay";
+
 const PageLoader = () => (
   <div className="flex h-screen w-screen items-center justify-center">
     <div className="flex flex-col items-center gap-4">
@@ -19,14 +28,7 @@ const ProfilePage = React.lazy(() => import("./pages/ProfilePage"));
 const AdminPage = React.lazy(() => import("./pages/AdminPage"));
 const WorkspaceLayout = React.lazy(() => import("./pages/WorkspaceLayout"));
 
-import PrivateRoute from "./components/PrivateRoute";
-import AdminRoute from "./components/AdminRoute";
-import MainLayout from "./components/MainLayout";
 
-import { useDashboardRealtime } from "@/hooks/useDashboardRealtime";
-import { useInvitationRealtime } from "@/hooks/useInvitationRealtime";
-import { useKickedFromProject } from "@/hooks/useKickedFromProject";
-import { ConnectionStatusOverlay } from "@/components/ConnectionStatusOverlay";
 
 const router = createBrowserRouter([
   { path: "/login", element: <LoginPage /> },

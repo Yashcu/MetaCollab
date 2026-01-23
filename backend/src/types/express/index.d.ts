@@ -1,7 +1,7 @@
 // src/types/express/index.d.ts
 
 // Reason: Use path alias for a stable, non-relative import path.
-import { IUser } from '@/models/User';
+import { IUser } from '../../models/User';
 
 // Reason: Renamed to be more descriptive. This is the payload from the JWT.
 // It's a subset of the full IUser model for performance and consistency.

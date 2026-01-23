@@ -132,33 +132,55 @@ const KanbanBoard = () => {
       )}
 
       <DragDropContext onDragEnd={onDragEnd}>
-        <div className="flex gap-4 flex-1 overflow-hidden">
-          {statuses.map((status) => (
-            <Droppable key={status} droppableId={status}>
-              {(provided) => (
-                <div
-                  ref={provided.innerRef}
-                  {...provided.droppableProps}
-                  className="flex-1 bg-gray-200 dark:bg-gray-700 p-2 rounded flex flex-col"
-                >
-                  <h3 className="font-bold mb-3 capitalize px-1 text-gray-800 dark:text-gray-200 flex-shrink-0">
-                    {status.replace("-", " ")}
-                  </h3>
-                  <div className="flex-grow overflow-y-auto px-1">
-                    {tasks
-                      .filter((task) => task.status === status)
-                      .sort((a, b) => a.order - b.order)
-                      .map((task, index) => (
+        <div className="grid grid-cols-1 lg:grid-cols-3 divide-y lg:divide-y-0 lg:divide-x divide-dashed divide-gray-300 dark:divide-gray-600 border border-dashed border-gray-300 dark:border-gray-600 rounded-xl bg-background/50 backdrop-blur-sm">
+          {statuses.map((status) => {
+            const statusTasks = tasks
+              .filter((task) => task.status === status)
+              .sort((a, b) => a.order - b.order);
+
+            return (
+              <Droppable key={status} droppableId={status}>
+                {(provided, snapshot) => (
+                  <div
+                    ref={provided.innerRef}
+                    {...provided.droppableProps}
+                    className={`
+                      p-4 min-h-[500px] transition-colors
+                      ${snapshot.isDraggingOver ? "bg-muted/50" : "hover:bg-muted/5"}
+                      flex flex-col relative
+                    `}
+                    style={{
+                      maxHeight: "calc(100vh - 200px)",
+                      overflowY: "auto",
+                    }}
+                  >
+                    <div className="flex justify-between items-center mb-6 px-1">
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-semibold text-sm uppercase tracking-wider text-muted-foreground">
+                          {status.replace("-", " ")}
+                        </h3>
+                      </div>
+                      <span className="bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-xs font-medium border border-border">
+                        {statusTasks.length}
+                      </span>
+                    </div>
+
+                    <div className="flex flex-col gap-3">
+                      {statusTasks.map((task, index) => (
                         <Draggable
                           key={task.id}
                           draggableId={task.id}
                           index={index}
                         >
-                          {(provided) => (
+                          {(provided, snapshot) => (
                             <div
                               ref={provided.innerRef}
                               {...provided.draggableProps}
                               {...provided.dragHandleProps}
+                              style={{
+                                ...provided.draggableProps.style,
+                                opacity: snapshot.isDragging ? 0.7 : 1,
+                              }}
                               className="bg-white dark:bg-gray-800 p-3 rounded shadow mb-2 group flex justify-between items-center gap-2"
                             >
                               <p className="font-medium text-gray-900 dark:text-gray-100 break-all">
@@ -200,12 +222,19 @@ const KanbanBoard = () => {
                           )}
                         </Draggable>
                       ))}
-                    {provided.placeholder}
+                      {provided.placeholder}
+                    </div>
+
+                    {statusTasks.length === 0 && (
+                      <div className="text-muted-foreground/40 text-center py-12 text-sm border-2 border-dashed border-border/50 rounded-lg m-2">
+                        Drop here
+                      </div>
+                    )}
                   </div>
-                </div>
-              )}
-            </Droppable>
-          ))}
+                )}
+              </Droppable>
+            );
+          })}
         </div>
       </DragDropContext>
     </div>
