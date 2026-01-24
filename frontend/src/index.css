@@ -1,78 +1,45 @@
-@import "tailwindcss/base";
-@import "tailwindcss/components";
-@import "tailwindcss/utilities";
+@import "tailwindcss";
 
-:root {
+@theme {
   /* Dark theme by default - premium deep backgrounds */
-  --background: 222 47% 11%;
-  --foreground: 210 40% 98%;
+  --color-background: oklch(from hsl(222 47% 11%) l c h);
+  --color-foreground: oklch(from hsl(210 40% 98%) l c h);
 
-  --card: 222 47% 15%;
-  --card-foreground: 210 40% 98%;
+  --color-card: oklch(from hsl(222 47% 15%) l c h);
+  --color-card-foreground: oklch(from hsl(210 40% 98%) l c h);
 
-  --popover: 222 47% 15%;
-  --popover-foreground: 210 40% 98%;
+  --color-popover: oklch(from hsl(222 47% 15%) l c h);
+  --color-popover-foreground: oklch(from hsl(210 40% 98%) l c h);
 
-  --primary: 217 91% 60%;
-  --primary-foreground: 222 47% 11%;
+  --color-primary: oklch(from hsl(217 91% 60%) l c h);
+  --color-primary-foreground: oklch(from hsl(222 47% 11%) l c h);
 
-  --secondary: 217 33% 22%;
-  --secondary-foreground: 210 40% 98%;
+  --color-secondary: oklch(from hsl(217 33% 22%) l c h);
+  --color-secondary-foreground: oklch(from hsl(210 40% 98%) l c h);
 
-  --muted: 217 33% 22%;
-  --muted-foreground: 215 20% 65%;
+  --color-muted: oklch(from hsl(217 33% 22%) l c h);
+  --color-muted-foreground: oklch(from hsl(215 20% 65%) l c h);
 
-  --accent: 217 91% 60%;
-  --accent-foreground: 222 47% 11%;
+  --color-accent: oklch(from hsl(217 91% 60%) l c h);
+  --color-accent-foreground: oklch(from hsl(222 47% 11%) l c h);
 
-  --destructive: 0 84% 60%;
-  --destructive-foreground: 210 40% 98%;
+  --color-destructive: oklch(from hsl(0 84% 60%) l c h);
+  --color-destructive-foreground: oklch(from hsl(210 40% 98%) l c h);
 
-  --border: 217 33% 22%;
-  --input: 217 33% 22%;
-  --ring: 217 91% 60%;
+  --color-border: oklch(from hsl(217 33% 22%) l c h);
+  --color-input: oklch(from hsl(217 33% 22%) l c h);
+  --color-ring: oklch(from hsl(217 91% 60%) l c h);
 
-  --radius: 0.75rem;
-}
-
-.dark {
-  /* Ensure dark theme variables are consistent */
-  --background: 222 47% 11%;
-  --foreground: 210 40% 98%;
-
-  --card: 222 47% 15%;
-  --card-foreground: 210 40% 98%;
-
-  --popover: 222 47% 15%;
-  --popover-foreground: 210 40% 98%;
-
-  --primary: 217 91% 60%;
-  --primary-foreground: 222 47% 11%;
-
-  --secondary: 217 33% 22%;
-  --secondary-foreground: 210 40% 98%;
-
-  --muted: 217 33% 22%;
-  --muted-foreground: 215 20% 65%;
-
-  --accent: 217 91% 60%;
-  --accent-foreground: 222 47% 11%;
-
-  --destructive: 0 84% 60%;
-  --destructive-foreground: 210 40% 98%;
-
-  --border: 217 33% 22%;
-  --input: 217 33% 22%;
-  --ring: 217 91% 60%;
+  --radius-md: 0.75rem;
 }
 
 * {
-  border-color: hsl(var(--border));
+  border-color: var(--color-border);
 }
 
 body {
-  background-color: hsl(var(--background));
-  color: hsl(var(--foreground));
+  background-color: var(--color-background);
+  color: var(--color-foreground);
   font-feature-settings: "rlig" 1, "calt" 1;
 }
 
