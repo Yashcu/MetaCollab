@@ -27,6 +27,7 @@ const DashboardPage = React.lazy(() => import("./pages/DashboardPage"));
 const ProfilePage = React.lazy(() => import("./pages/ProfilePage"));
 const AdminPage = React.lazy(() => import("./pages/AdminPage"));
 const WorkspaceLayout = React.lazy(() => import("./pages/WorkspaceLayout"));
+const NotFoundPage = React.lazy(() => import("./pages/NotFoundPage"));
 
 
 
@@ -61,6 +62,7 @@ const router = createBrowserRouter([
       },
     ],
   },
+  { path: "*", element: <NotFoundPage /> },
 ]);
 
 function App() {

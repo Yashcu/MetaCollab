@@ -89,7 +89,7 @@ const Header = ({ showCallButton = false }: HeaderProps) => {
               <Avatar>
                 <AvatarImage src={user?.avatarUrl} alt={user?.name} />
                 <AvatarFallback className="font-bold">
-                  {user?.name.charAt(0).toUpperCase()}
+                  {user?.name?.charAt(0).toUpperCase() || '?'}
                 </AvatarFallback>
               </Avatar>
             </Button>

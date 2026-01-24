@@ -54,7 +54,7 @@ const ProjectCard = ({ project, isOwner, onDelete, index }: ProjectCardProps) =>
                 <Avatar key={member.id} className="w-6 h-6 border border-[#0a0a0a]">
                   <AvatarImage src={member.avatarUrl} alt={member.name} />
                   <AvatarFallback className="text-[10px] bg-gray-700 text-white">
-                    {member.name.charAt(0).toUpperCase()}
+                    {member.name?.charAt(0).toUpperCase() || '?'}
                   </AvatarFallback>
                 </Avatar>
               ))}
