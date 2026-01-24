@@ -11,7 +11,6 @@ import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/components/ui/use-toast";
 import CreateProjectDialog from "@/components/CreateProjectDialog";
 import ProjectCard from "@/components/ProjectCard";
-import RenderWarningBanner from "@/components/RenderWarningBanner";
 
 const DashboardPage = () => {
   const { isProjectsLoading, setProjectsLoading } = useUIStore();
@@ -58,7 +57,6 @@ const DashboardPage = () => {
 
   return (
     <div className="animate-in fade-in duration-500">
-      <RenderWarningBanner />
       <div className="flex flex-wrap gap-4 justify-between items-center mb-8">
         <div>
           <h1 className="text-4xl font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">

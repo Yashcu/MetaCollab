@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Link, useNavigate } from "react-router-dom";
 import { useToast } from "@/components/ui/use-toast";
 import { signup as signupService } from "@/services/authService";
+import RenderWarningBanner from "@/components/RenderWarningBanner";
 
 const SignupPage = () => {
   const {
@@ -46,59 +47,62 @@ const SignupPage = () => {
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gray-100 dark:bg-gray-900">
-      <Card className="w-full max-w-sm">
-        <CardHeader>
-          <CardTitle className="text-2xl">Sign Up</CardTitle>
-          <CardDescription>
-            Enter your information to create an account.
-          </CardDescription>
-        </CardHeader>
-        <form onSubmit={handleSubmit(onSubmit)}>
-          <CardContent className="grid gap-4">
-            <div className="grid gap-2">
-              <Label htmlFor="name">Name</Label>
-              <Input {...register("name")} id="name" placeholder="John Doe" />
-              {errors.name && (
-                <p className="text-sm text-red-500">{errors.name.message}</p>
-              )}
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                {...register("email")}
-                id="email"
-                type="email"
-                placeholder="m@example.com"
-              />
-              {errors.email && (
-                <p className="text-sm text-red-500">{errors.email.message}</p>
-              )}
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="password">Password</Label>
-              <Input {...register("password")} id="password" type="password" />
-              {errors.password && (
-                <p className="text-sm text-red-500">
-                  {errors.password.message}
-                </p>
-              )}
-            </div>
-          </CardContent>
-          <CardFooter className="flex flex-col">
-            <Button type="submit" className="w-full" disabled={isSubmitting}>
-              {isSubmitting ? "Creating Account..." : "Create Account"}
-            </Button>
-            <div className="mt-4 text-center text-sm">
-              Already have an account?{" "}
-              <Link to="/login" className="underline">
-                Sign in
-              </Link>
-            </div>
-          </CardFooter>
-        </form>
-      </Card>
-    </div>
+    <>
+      <RenderWarningBanner />
+      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
+        <Card className="w-full max-w-sm">
+          <CardHeader>
+            <CardTitle className="text-2xl">Sign Up</CardTitle>
+            <CardDescription>
+              Enter your information to create an account.
+            </CardDescription>
+          </CardHeader>
+          <form onSubmit={handleSubmit(onSubmit)}>
+            <CardContent className="grid gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="name">Name</Label>
+                <Input {...register("name")} id="name" placeholder="John Doe" />
+                {errors.name && (
+                  <p className="text-sm text-red-500">{errors.name.message}</p>
+                )}
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  {...register("email")}
+                  id="email"
+                  type="email"
+                  placeholder="m@example.com"
+                />
+                {errors.email && (
+                  <p className="text-sm text-red-500">{errors.email.message}</p>
+                )}
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="password">Password</Label>
+                <Input {...register("password")} id="password" type="password" />
+                {errors.password && (
+                  <p className="text-sm text-red-500">
+                    {errors.password.message}
+                  </p>
+                )}
+              </div>
+            </CardContent>
+            <CardFooter className="flex flex-col">
+              <Button type="submit" className="w-full" disabled={isSubmitting}>
+                {isSubmitting ? "Creating Account..." : "Create Account"}
+              </Button>
+              <div className="mt-4 text-center text-sm">
+                Already have an account?{" "}
+                <Link to="/login" className="underline">
+                  Sign in
+                </Link>
+              </div>
+            </CardFooter>
+          </form>
+        </Card>
+      </div>
+    </>
   );
 };
 

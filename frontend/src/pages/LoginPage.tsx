@@ -16,6 +16,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useToast } from "@/components/ui/use-toast";
 import { login as loginService } from "@/services/authService";
 import { AxiosError } from "axios";
+import RenderWarningBanner from "@/components/RenderWarningBanner";
 
 const LoginPage = () => {
   const methods = useForm<TLoginSchema>({
@@ -61,44 +62,47 @@ const LoginPage = () => {
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gray-100 dark:bg-gray-900">
-      <Card className="w-full max-w-sm">
-        <CardHeader>
-          <CardTitle className="text-2xl">Login</CardTitle>
-          <CardDescription>Enter your email below to login.</CardDescription>
-        </CardHeader>
-        {/* Use the FormProvider to pass down form context to nested inputs */}
-        <FormProvider {...methods}>
-          <form onSubmit={methods.handleSubmit(onSubmit)}>
-            <CardContent className="grid gap-4">
-              <FormInput
-                name="email"
-                label="Email"
-                type="email"
-                placeholder="abc@example.com"
-              />
-              <FormInput
-                name="password"
-                label="Password"
-                type="password"
-                placeholder="******"
-              />
-            </CardContent>
-            <CardFooter className="flex flex-col">
-              <Button type="submit" className="w-full" disabled={isSubmitting}>
-                {isSubmitting ? "Signing in..." : "Sign in"}
-              </Button>
-              <div className="mt-4 text-center text-sm">
-                Don't have an account?{" "}
-                <Link to="/signup" className="underline">
-                  Sign up
-                </Link>
-              </div>
-            </CardFooter>
-          </form>
-        </FormProvider>
-      </Card>
-    </div>
+    <>
+      <RenderWarningBanner />
+      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
+        <Card className="w-full max-w-sm">
+          <CardHeader>
+            <CardTitle className="text-2xl">Login</CardTitle>
+            <CardDescription>Enter your email below to login.</CardDescription>
+          </CardHeader>
+          {/* Use the FormProvider to pass down form context to nested inputs */}
+          <FormProvider {...methods}>
+            <form onSubmit={methods.handleSubmit(onSubmit)}>
+              <CardContent className="grid gap-4">
+                <FormInput
+                  name="email"
+                  label="Email"
+                  type="email"
+                  placeholder="abc@example.com"
+                />
+                <FormInput
+                  name="password"
+                  label="Password"
+                  type="password"
+                  placeholder="******"
+                />
+              </CardContent>
+              <CardFooter className="flex flex-col">
+                <Button type="submit" className="w-full" disabled={isSubmitting}>
+                  {isSubmitting ? "Signing in..." : "Sign in"}
+                </Button>
+                <div className="mt-4 text-center text-sm">
+                  Don't have an account?{" "}
+                  <Link to="/signup" className="underline">
+                    Sign up
+                  </Link>
+                </div>
+              </CardFooter>
+            </form>
+          </FormProvider>
+        </Card>
+      </div>
+    </>
   );
 };
 
