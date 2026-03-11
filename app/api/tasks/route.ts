@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const task = await Task.create({
+    const taskDoc = await Task.create({
       title: title.trim(),
       description: description?.trim() ?? "",
       project: projectId,
@@ -46,6 +46,8 @@ export async function POST(req: NextRequest) {
       status: status ?? "todo",
       priority: priority ?? "medium",
     });
+
+    const task = taskDoc.toObject();
 
     // Real-time notification to project channel
     await pusherServer.trigger(

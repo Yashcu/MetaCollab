@@ -11,7 +11,7 @@ import { requireAuth, validationError, serverError } from "@/lib/api";
 export const runtime = "nodejs";
 
 // Get all pending invitations for the current user
-export async function GET(_req: NextRequest) {
+export async function GET() {
   try {
     const { userId, error } = await requireAuth();
     if (error) return error;

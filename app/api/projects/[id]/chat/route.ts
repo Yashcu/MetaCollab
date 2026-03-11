@@ -4,6 +4,7 @@ import { Project } from "@/lib/models/Project";
 import { pusherServer } from "@/lib/pusher";
 import { isValidObjectId } from "@/lib/utils";
 import { requireAuth, serverError } from "@/lib/api";
+import crypto from "crypto";
 
 export const runtime = "nodejs";
 

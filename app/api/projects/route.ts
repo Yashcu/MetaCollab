@@ -24,13 +24,14 @@ export async function POST(req: NextRequest) {
 
     await connectDB();
 
-    const project = await Project.create({
+    const projectDoc = await Project.create({
       name: name.trim(),
       description: typeof description === "string" ? description.trim() : "",
       owner: userId,
-      // Owner is also added as a member so membership queries work uniformly
       members: [{ userId, role: "owner" }] as IProjectMember[],
     });
+
+    const project = projectDoc.toObject();
 
     return NextResponse.json(
       { success: true, data: project, message: "Project created successfully" },
@@ -42,7 +43,7 @@ export async function POST(req: NextRequest) {
 }
 
 // Get all projects the current user belongs to
-export async function GET(_req: NextRequest) {
+export async function GET() {
   try {
     const { userId, error } = await requireAuth();
     if (error) return error;

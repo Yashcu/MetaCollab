@@ -9,7 +9,7 @@ export const runtime = "nodejs";
 // Used by the invitation flow to resolve a Clerk user from an email address.
 export async function GET(req: NextRequest) {
   try {
-    const { userId, error } = await requireAuth();
+    const { error } = await requireAuth();
     if (error) return error;
 
     const email = req.nextUrl.searchParams.get("email");

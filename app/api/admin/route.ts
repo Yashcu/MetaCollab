@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { clerkClient } from "@clerk/nextjs/server";
 import { connectDB } from "@/lib/mongodb";
 import { Project } from "@/lib/models/Project";
@@ -9,7 +9,7 @@ import { resolveRole } from "@/lib/utils";
 export const runtime = "nodejs";
 
 // Admin-only dashboard stats
-export async function GET(_req: NextRequest) {
+export async function GET() {
   try {
     const { userId, error } = await requireAuth();
     if (error) return error;

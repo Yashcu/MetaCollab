@@ -89,7 +89,7 @@ export async function PATCH(
       { _id: id, owner: userId },
       allowedUpdates,
       { new: true, runValidators: true }
-    );
+    ).lean();
 
     if (!updatedProject) {
       return NextResponse.json(
