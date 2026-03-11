@@ -1,7 +1,16 @@
 /** @type {import('next').NextConfig} */
+
 const nextConfig = {
+    reactStrictMode: true,
+
+    compress: true,
+
     eslint: {
         ignoreDuringBuilds: false,
+    },
+
+    experimental: {
+        optimizePackageImports: ["lucide-react", "date-fns"],
     },
 
     images: {
@@ -19,7 +28,6 @@ const nextConfig = {
                     { key: "X-Frame-Options", value: "DENY" },
                     { key: "X-Content-Type-Options", value: "nosniff" },
                     { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-                    // camera/mic blocked globally — project pages re-enable via Permissions-Policy if needed
                     {
                         key: "Permissions-Policy",
                         value: "camera=(), microphone=(), geolocation=()",

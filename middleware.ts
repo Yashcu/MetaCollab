@@ -2,12 +2,11 @@ import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 
 const isPublicRoute = createRouteMatcher([
   "/",
-  "/sign-in(.*)",
-  "/sign-up(.*)",
+  "/sign-in/:path*",
+  "/sign-up/:path*",
 ]);
 
 export default clerkMiddleware(async (auth, req) => {
-  // Redirect unauthenticated users to /sign-in for any protected route
   if (!isPublicRoute(req)) {
     await auth.protect();
   }
@@ -15,9 +14,8 @@ export default clerkMiddleware(async (auth, req) => {
 
 export const config = {
   matcher: [
-    // Skip Next.js internals and static assets; still runs on ?-param URLs
-    "/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
-    // Always run for API and tRPC routes
-    "/(api|trpc)(.*)",
+    "/dashboard/:path*",
+    "/projects/:path*",
+    "/api/:path*"
   ],
 };
