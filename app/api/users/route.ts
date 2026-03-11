@@ -1,16 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth, clerkClient } from "@clerk/nextjs/server";
+import { clerkClient } from "@clerk/nextjs/server";
+import { z } from "zod";
+import { requireAuth, serverError } from "@/lib/api";
 
 export const runtime = "nodejs";
 
-// GET /api/users?email=xxx — look up a user by their email address
-// Used by the invitation flow to find a user before inviting them
+// GET /api/users?email=xxx
+// Used by the invitation flow to resolve a Clerk user from an email address.
 export async function GET(req: NextRequest) {
   try {
-    const { userId } = await auth();
-    if (!userId) {
-      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
-    }
+    const { userId, error } = await requireAuth();
+    if (error) return error;
 
     const email = req.nextUrl.searchParams.get("email");
 
@@ -21,13 +21,20 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // Search for the user in Clerk by their email address
+    // validate format before hitting Clerk — bad emails cause unexpected 500s
+    const emailParsed = z.string().email().safeParse(email);
+    if (!emailParsed.success) {
+      return NextResponse.json(
+        { message: "Invalid email format" },
+        { status: 400 }
+      );
+    }
+
     const client = await clerkClient();
     const results = await client.users.getUserList({
       emailAddress: [email],
     });
 
-    // Guard: results.data[0] is undefined if no users found
     const foundUser = results.data[0];
 
     if (!foundUser) {
@@ -37,7 +44,6 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // Guard: emailAddresses[0] could be undefined
     const primaryEmail = foundUser.emailAddresses[0];
 
     return NextResponse.json(
@@ -46,7 +52,7 @@ export async function GET(req: NextRequest) {
         data: {
           id: foundUser.id,
           email: primaryEmail?.emailAddress ?? email,
-          // fullName can be null if not set — fall back through options
+          // fullName is null when first/last name aren't set
           name: foundUser.fullName ?? foundUser.firstName ?? "Unknown User",
           avatarUrl: foundUser.imageUrl,
         },
@@ -54,10 +60,6 @@ export async function GET(req: NextRequest) {
       { status: 200 }
     );
   } catch (error: unknown) {
-    console.error("[GET /api/users] error:", error);
-    return NextResponse.json(
-      { message: "Internal server error" },
-      { status: 500 }
-    );
+    return serverError("GET /api/users", error);
   }
 }

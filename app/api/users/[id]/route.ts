@@ -1,26 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth, clerkClient } from "@clerk/nextjs/server";
+import { clerkClient } from "@clerk/nextjs/server";
+import { userUpdateSchema } from "@/lib/validations";
+import { requireAuth, validationError, serverError } from "@/lib/api";
+import { resolveRole } from "@/lib/utils";
 
 export const runtime = "nodejs";
 
-// GET /api/users/[id] — fetch a single user's profile by their Clerk user ID
+
+// GET /api/users/[id] — fetch a user's public profile by their Clerk user ID
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { userId } = await auth();
-    if (!userId) {
-      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
-    }
+    const { userId, error } = await requireAuth();
+    if (error) return error;
 
     const { id } = await params;
 
     const client = await clerkClient();
     const userObj = await client.users.getUser(id);
 
-    const rawRole = userObj.publicMetadata.role;
-    const role = rawRole === "admin" ? "admin" : "user";
+    const role = resolveRole(userObj.publicMetadata as Record<string, unknown>);
 
     return NextResponse.json(
       {
@@ -37,29 +38,32 @@ export async function GET(
     );
   } catch (error: unknown) {
     console.error("[GET /api/users/[id]] error:", error);
+    // Clerk throws a 404-shaped error when the user doesn't exist
+    const isNotFound =
+      typeof error === "object" &&
+      error !== null &&
+      "status" in error &&
+      (error as { status: number }).status === 404;
     return NextResponse.json(
-      { message: "User not found" },
-      { status: 404 }
+      { message: isNotFound ? "User not found" : "Internal server error" },
+      { status: isNotFound ? 404 : 500 }
     );
   }
 }
 
-// PUT /api/users/[id] — update the current user's display name
-// Users can only update their OWN profile — not anyone else's.
-// Avatar/image changes are handled by Clerk's <UserProfile /> component.
+// PUT /api/users/[id] — update the authenticated user's display name
+// Avatar changes go through Clerk's <UserProfile /> component, not this route.
 export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { userId } = await auth();
-    if (!userId) {
-      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
-    }
+    const { userId, error } = await requireAuth();
+    if (error) return error;
 
     const { id } = await params;
 
-    // Users can only edit their own profile
+    // Users can only modify their own profile
     if (userId !== id) {
       return NextResponse.json(
         { message: "You can only update your own profile" },
@@ -68,21 +72,14 @@ export async function PUT(
     }
 
     const body = await req.json();
-    const firstName: unknown = body.firstName;
-    const lastName: unknown = body.lastName;
-
-    // At least one field must be provided
-    if (
-      (firstName === undefined || firstName === null) &&
-      (lastName === undefined || lastName === null)
-    ) {
-      return NextResponse.json(
-        { message: "At least one field (firstName or lastName) is required" },
-        { status: 400 }
-      );
+    const parsed = userUpdateSchema.safeParse(body);
+    if (!parsed.success) {
+      return validationError(parsed.error);
     }
 
-    // Build the update payload — only include fields that were actually sent
+    const { firstName, lastName } = parsed.data;
+
+    // Build update payload dynamically — omit fields not present in the request
     const updatePayload: { firstName?: string; lastName?: string } = {};
 
     if (typeof firstName === "string" && firstName.trim().length > 0) {
@@ -90,15 +87,22 @@ export async function PUT(
     }
 
     if (typeof lastName === "string") {
-      // lastName can be empty string (to remove it)
+      // Allow empty string to clear the last name
       updatePayload.lastName = lastName.trim();
+    }
+
+    // Bail early — calling Clerk with an empty payload is a no-op and wastes a round-trip
+    if (Object.keys(updatePayload).length === 0) {
+      return NextResponse.json(
+        { message: "No valid fields to update" },
+        { status: 400 }
+      );
     }
 
     const client = await clerkClient();
     const updatedUser = await client.users.updateUser(id, updatePayload);
 
-    const rawRole = updatedUser.publicMetadata.role;
-    const role = rawRole === "admin" ? "admin" : "user";
+    const role = resolveRole(updatedUser.publicMetadata as Record<string, unknown>);
 
     return NextResponse.json(
       {
@@ -115,10 +119,6 @@ export async function PUT(
       { status: 200 }
     );
   } catch (error: unknown) {
-    console.error("[PUT /api/users/[id]] error:", error);
-    return NextResponse.json(
-      { message: "Internal server error" },
-      { status: 500 }
-    );
+    return serverError("PUT /api/users/[id]", error);
   }
 }

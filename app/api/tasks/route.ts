@@ -1,86 +1,57 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
 import { connectDB } from "@/lib/mongodb";
 import { Task } from "@/lib/models/Task";
 import { Project } from "@/lib/models/Project";
 import { pusherServer } from "@/lib/pusher";
+import { taskSchema } from "@/lib/validations";
+import { isValidObjectId } from "@/lib/utils";
+import { requireAuth, validationError, serverError } from "@/lib/api";
 
 export const runtime = "nodejs";
 
-// POST /api/tasks — create a new task inside a project
+// Create a new task inside a project
 export async function POST(req: NextRequest) {
   try {
-    const { userId } = await auth();
-    if (!userId) {
-      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
-    }
+    const { userId, error } = await requireAuth();
+    if (error) return error;
 
-    // Parse and validate the request body
     const body = await req.json();
-    const title: unknown = body.title;
-    const description: unknown = body.description;
-    const projectId: unknown = body.project;
-    const assigneeId: unknown = body.assigneeId;   // Clerk user ID of the assignee
-    const status: unknown = body.status;
-    const priority: unknown = body.priority;
-
-    if (!title || typeof title !== "string" || title.trim().length === 0) {
-      return NextResponse.json(
-        { message: "Task title is required" },
-        { status: 400 }
-      );
+    const parsed = taskSchema.safeParse(body);
+    if (!parsed.success) {
+      return validationError(parsed.error);
     }
 
-    if (!projectId || typeof projectId !== "string") {
-      return NextResponse.json(
-        { message: "Project ID is required" },
-        { status: 400 }
-      );
-    }
+    const { title, description, project: projectId, assigneeId, status, priority } = parsed.data;
 
     await connectDB();
 
-    // Verify the current user is actually a member of the project
-    const project = await Project.findOne({
+    // Only project members can create tasks
+    const isMember = await Project.exists({
       _id: projectId,
       "members.userId": userId,
     });
 
-    if (!project) {
+    if (!isMember) {
       return NextResponse.json(
         { message: "Project not found or you are not a member" },
         { status: 403 }
       );
     }
 
-    // Only allow valid status and priority values
-    const allowedStatuses = ["todo", "in-progress", "done"];
-    const allowedPriorities = ["low", "medium", "high"];
-
-    const finalStatus = allowedStatuses.includes(status as string)
-      ? (status as string)
-      : "todo";
-
-    const finalPriority = allowedPriorities.includes(priority as string)
-      ? (priority as string)
-      : "medium";
-
-    // Create the task
     const task = await Task.create({
       title: title.trim(),
-      description: typeof description === "string" ? description.trim() : "",
+      description: description?.trim() ?? "",
       project: projectId,
-      assignee: typeof assigneeId === "string" ? assigneeId : undefined,
-      status: finalStatus,
-      priority: finalPriority,
+      assignee: assigneeId ?? undefined,
+      status: status ?? "todo",
+      priority: priority ?? "medium",
     });
 
-    // Broadcast updated task list to all project members
-    const allTasks = await Task.find({ project: projectId }).sort("order");
+    // Real-time notification to project channel
     await pusherServer.trigger(
       `private-project-${projectId}`,
-      "tasks:updated",
-      allTasks
+      "task:created",
+      task
     );
 
     return NextResponse.json(
@@ -88,21 +59,15 @@ export async function POST(req: NextRequest) {
       { status: 201 }
     );
   } catch (error: unknown) {
-    console.error("[POST /api/tasks] error:", error);
-    return NextResponse.json(
-      { message: "Internal server error" },
-      { status: 500 }
-    );
+    return serverError("POST /api/tasks", error);
   }
 }
 
-// GET /api/tasks?projectId=xxx — fetch all tasks for a project
+// Get all tasks for a project — requires projectId query param
 export async function GET(req: NextRequest) {
   try {
-    const { userId } = await auth();
-    if (!userId) {
-      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
-    }
+    const { userId, error } = await requireAuth();
+    if (error) return error;
 
     const projectId = req.nextUrl.searchParams.get("projectId");
 
@@ -113,33 +78,38 @@ export async function GET(req: NextRequest) {
       );
     }
 
+    if (!isValidObjectId(projectId)) {
+      return NextResponse.json(
+        { message: "Invalid project ID" },
+        { status: 400 }
+      );
+    }
+
     await connectDB();
 
-    // Verify user is a member before returning tasks
-    const project = await Project.findOne({
+    // Gate the query behind a membership check
+    const isMember = await Project.exists({
       _id: projectId,
       "members.userId": userId,
     });
 
-    if (!project) {
+    if (!isMember) {
       return NextResponse.json(
         { message: "Project not found or you do not have access" },
-        { status: 404 }
+        { status: 403 }
       );
     }
 
-    // Sort by order field so kanban columns appear in the right sequence
-    const tasks = await Task.find({ project: projectId }).sort("order");
+    const tasks = await Task.find({ project: projectId })
+      .sort({ order: 1 })
+      .select("-__v")
+      .lean();
 
     return NextResponse.json(
       { success: true, data: tasks, message: "Tasks fetched successfully" },
       { status: 200 }
     );
   } catch (error: unknown) {
-    console.error("[GET /api/tasks] error:", error);
-    return NextResponse.json(
-      { message: "Internal server error" },
-      { status: 500 }
-    );
+    return serverError("GET /api/tasks", error);
   }
 }

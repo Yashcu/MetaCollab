@@ -2,18 +2,22 @@ export const fetchJson = async <T>(
   url: string,
   options: RequestInit = {}
 ): Promise<T> => {
-  // Set up a 10-second timeout so requests never hang forever
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 10_000);
+  // Set up a 10-second timeout only if the caller didn't provide their own signal
+  let timeoutId: NodeJS.Timeout | undefined;
+  if (!options.signal) {
+    const controller = new AbortController();
+    timeoutId = setTimeout(() => controller.abort(), 10_000);
+    options.signal = controller.signal;
+  }
 
   try {
     const response = await fetch(url, {
       ...options,
       headers: {
-        "Content-Type": "application/json",
+        // only set Content-Type when sending a body — GET requests have none
+        ...(options.body != null && { "Content-Type": "application/json" }),
         ...(options.headers as Record<string, string>),
       },
-      signal: controller.signal,
     });
 
     let parsedData: unknown = null;
@@ -45,6 +49,8 @@ export const fetchJson = async <T>(
 
     return parsedData as T;
   } finally {
-    clearTimeout(timeoutId);
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
   }
 };

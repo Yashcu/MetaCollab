@@ -1,6 +1,5 @@
 import { create } from "zustand";
 import { toast } from "sonner";
-import debounce from "lodash/debounce";
 import {
   type Project,
   getProjects,
@@ -48,6 +47,14 @@ interface ProjectState {
 // Uses the service function (which sends individual PATCH requests per task)
 // instead of the old non-existent bulk reorder endpoint.
 // ---------------------------------------------------------------------------
+function debounce<T extends (...args: Parameters<T>) => void>(fn: T, ms: number): T {
+  let timer: ReturnType<typeof setTimeout>;
+  return ((...args: Parameters<T>) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), ms);
+  }) as T;
+}
+
 const debouncedSaveReorder = debounce(
   async (
     reorderedTasks: Task[],

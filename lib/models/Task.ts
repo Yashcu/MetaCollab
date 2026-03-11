@@ -1,14 +1,17 @@
 import mongoose, { Schema, Document, Model } from "mongoose";
+import { TASK_STATUSES, TASK_PRIORITIES, TaskStatus, TaskPriority } from "@/lib/types";
 
 export interface ITask extends Document {
   title: string;
   description?: string;
-  project: string;
+  project: mongoose.Types.ObjectId;
   assignee?: string;
-  status: "todo" | "in-progress" | "done";
-  priority: "low" | "medium" | "high";
+  status: TaskStatus;
+  priority: TaskPriority;
   order: number;
   dueDate?: Date;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 const taskSchema = new Schema<ITask>(
@@ -27,7 +30,7 @@ const taskSchema = new Schema<ITask>(
     },
 
     project: {
-      type: String,
+      type: Schema.Types.ObjectId,
       required: [true, "Project ID is required"],
       index: true,
     },
@@ -40,13 +43,13 @@ const taskSchema = new Schema<ITask>(
 
     status: {
       type: String,
-      enum: ["todo", "in-progress", "done"],
+      enum: [...TASK_STATUSES],
       default: "todo",
     },
 
     priority: {
       type: String,
-      enum: ["low", "medium", "high"],
+      enum: [...TASK_PRIORITIES],
       default: "medium",
     },
 

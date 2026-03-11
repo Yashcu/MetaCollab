@@ -1,12 +1,13 @@
 import { fetchJson } from "./fetcher";
+import { TaskStatus, TaskPriority } from "@/lib/types";
 
 // Task data returned from the API
 export interface Task {
   id: string;
   title: string;
   description: string;
-  status: "todo" | "in-progress" | "done";
-  priority: "low" | "medium" | "high";
+  status: TaskStatus;
+  priority: TaskPriority;
   project: string;
   assignee?: string;
   order: number;
@@ -19,8 +20,8 @@ export interface Task {
 export interface CreateTaskInput {
   title: string;
   description?: string;
-  status?: "todo" | "in-progress" | "done";
-  priority?: "low" | "medium" | "high";
+  status?: TaskStatus;
+  priority?: TaskPriority;
   assigneeId?: string;
   dueDate?: string;
 }
@@ -29,8 +30,8 @@ export interface CreateTaskInput {
 export interface UpdateTaskInput {
   title?: string;
   description?: string;
-  status?: "todo" | "in-progress" | "done";
-  priority?: "low" | "medium" | "high";
+  status?: TaskStatus;
+  priority?: TaskPriority;
   assigneeId?: string | null;
   order?: number;
   dueDate?: string | null;
@@ -71,7 +72,7 @@ export const deleteTask = async (taskId: string): Promise<void> => {
   return fetchJson<void>(`/api/tasks/${taskId}`, { method: "DELETE" });
 };
 
-// Update task order after drag and drop
+// ⚠️ fires N individual PATCH requests — replace with bulk endpoint when board grows large
 export const reorderTasks = async (
   reorderedTasks: Array<{ id: string; order: number }>
 ): Promise<void> => {

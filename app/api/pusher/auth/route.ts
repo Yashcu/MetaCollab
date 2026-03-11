@@ -1,20 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
 import { connectDB } from "@/lib/mongodb";
 import { Project } from "@/lib/models/Project";
 import { pusherServer } from "@/lib/pusher";
+import { isValidObjectId } from "@/lib/utils";
+import { requireAuth, serverError } from "@/lib/api";
 
 export const runtime = "nodejs";
 
+// Pusher private-channel auth endpoint.
+// Verifies the user has the right to subscribe to the requested channel
+// before handing back a signed auth token.
 export async function POST(req: NextRequest) {
   try {
-    // Step 1: User must be logged in
-    const { userId } = await auth();
-    if (!userId) {
-      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
-    }
+    const { userId, error } = await requireAuth();
+    if (error) return error;
 
-    // Step 2: Parse the Pusher auth request body
+    // Pusher sends auth requests as URL-encoded form data
     const data = await req.text();
     const urlParams = new URLSearchParams(data);
 
@@ -28,15 +29,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Step 3: Verify the user actually has access to this channel.
-    // We support two channel formats:
-    //   private-user-{clerkUserId}     — user's personal channel
-    //   private-project-{projectId}   — a project's channel
+    // Authorisation rules:
+    //   private-user-{clerkUserId}   — user's own personal channel only
+    //   private-project-{projectId}  — project channel, membership required
     //
-    // Without this check, any logged-in user could subscribe to any channel.
+    // Any other channel format is rejected outright.
 
     if (channelName.startsWith("private-user-")) {
-      // Personal channel — only allow if it's the user's own channel
       const channelUserId = channelName.replace("private-user-", "");
       if (channelUserId !== userId) {
         return NextResponse.json(
@@ -45,38 +44,40 @@ export async function POST(req: NextRequest) {
         );
       }
     } else if (channelName.startsWith("private-project-")) {
-      // Project channel — only allow if user is a member of that project
       const projectId = channelName.replace("private-project-", "");
 
       await connectDB();
 
-      const project = await Project.findOne({
+      if (!isValidObjectId(projectId)) {
+        return NextResponse.json(
+          { message: "Invalid project ID" },
+          { status: 400 }
+        );
+      }
+
+      // exists() avoids loading the full document — we only need a boolean here
+      const isMember = await Project.exists({
         _id: projectId,
         "members.userId": userId,
       });
 
-      if (!project) {
+      if (!isMember) {
         return NextResponse.json(
           { message: "You are not a member of this project" },
           { status: 403 }
         );
       }
     } else {
-      // Unknown channel format — reject it
       return NextResponse.json(
         { message: "Unknown channel format" },
         { status: 400 }
       );
     }
 
-    // Step 4: All checks passed — generate the Pusher auth token
+    // All checks passed — return the signed Pusher auth token
     const authResponse = pusherServer.authorizeChannel(socketId, channelName);
     return NextResponse.json(authResponse);
   } catch (error: unknown) {
-    console.error("[POST /api/pusher/auth] error:", error);
-    return NextResponse.json(
-      { message: "Internal server error" },
-      { status: 500 }
-    );
+    return serverError("POST /api/pusher/auth", error);
   }
 }

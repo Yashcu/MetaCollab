@@ -1,4 +1,5 @@
 import { fetchJson } from "./fetcher";
+import { InvitationStatus } from "@/lib/types";
 
 // Invitation data returned from the API
 export interface Invitation {
@@ -6,7 +7,7 @@ export interface Invitation {
   project: string;
   inviter: string;
   recipient: string;
-  status: "pending" | "accepted" | "declined" | "expired";
+  status: InvitationStatus;
   expiresAt: string;
   createdAt: string;
 }
@@ -40,8 +41,8 @@ export const declineInvitation = async (
 export const inviteMember = async (
   projectId: string,
   email: string
-): Promise<void> => {
-  await fetchJson<void>("/api/invitations", {
+): Promise<Invitation> => {
+  return fetchJson<Invitation>("/api/invitations", {
     method: "POST",
     body: JSON.stringify({ projectId, email }),
   });

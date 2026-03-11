@@ -1,25 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
 import { connectDB } from "@/lib/mongodb";
 import { Project } from "@/lib/models/Project";
 import { pusherServer } from "@/lib/pusher";
-import mongoose from "mongoose";
+import { isValidObjectId } from "@/lib/utils";
+import { requireAuth, serverError } from "@/lib/api";
 
 export const runtime = "nodejs";
 
-function isValidObjectId(id: string) {
-    return mongoose.Types.ObjectId.isValid(id);
-}
-
+// Broadcast a chat message to all project members via Pusher
 export async function POST(
     req: NextRequest,
     { params }: { params: Promise<{ id: string }> }
 ) {
     try {
-        const { userId } = await auth();
-        if (!userId) {
-            return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
-        }
+        const { userId, error } = await requireAuth();
+        if (error) return error;
 
         const { id } = await params;
 
@@ -28,35 +23,42 @@ export async function POST(
         }
 
         const body = await req.json();
-        const { id: msgId, user, message, timestamp } = body;
+        const { message } = body;
 
         if (!message || typeof message !== "string" || !message.trim()) {
             return NextResponse.json({ message: "Message is required" }, { status: 400 });
         }
 
+        if (message.length > 2000) {
+            return NextResponse.json(
+                { message: "Message cannot exceed 2000 characters" },
+                { status: 400 }
+            );
+        }
+
         await connectDB();
 
-        // Verify sender is a member of this project
-        const project = await Project.findOne({
+        // Deny if the sender isn't a project member
+        // exists() avoids loading the full document — we only need a boolean here
+        const isMember = await Project.exists({
             _id: id,
             "members.userId": userId,
         });
 
-        if (!project) {
-            return NextResponse.json({ message: "Project not found or access denied" }, { status: 404 });
+        if (!isMember) {
+            return NextResponse.json({ message: "Project not found or access denied" }, { status: 403 });
         }
 
-        // Broadcast to all project members via Pusher
+        // build user object from auth — never trust client-supplied identity
         await pusherServer.trigger(`private-project-${id}`, "chat:message", {
-            id: msgId ?? crypto.randomUUID(),
-            user,
+            id: crypto.randomUUID(),
+            userId,
             message: message.trim(),
-            timestamp: timestamp ?? new Date().toISOString(),
+            timestamp: new Date().toISOString(),
         });
 
         return NextResponse.json({ success: true }, { status: 200 });
     } catch (error: unknown) {
-        console.error("[POST /api/projects/[id]/chat] error:", error);
-        return NextResponse.json({ message: "Internal server error" }, { status: 500 });
+        return serverError("POST /api/projects/[id]/chat", error);
     }
 }

@@ -1,23 +1,22 @@
-import { NextResponse } from "next/server";
-import { NextRequest } from "next/server";
-import { auth, clerkClient } from "@clerk/nextjs/server";
+import { NextRequest, NextResponse } from "next/server";
+import { clerkClient } from "@clerk/nextjs/server";
 import { connectDB } from "@/lib/mongodb";
 import { Invitation } from "@/lib/models/Invitation";
 import { Project } from "@/lib/models/Project";
 import type { IProjectMember } from "@/lib/models/Project";
 import { pusherServer } from "@/lib/pusher";
+import { invitationSchema } from "@/lib/validations";
+import { requireAuth, validationError, serverError } from "@/lib/api";
 
 export const runtime = "nodejs";
 
-// GET /api/invitations — fetch all pending invitations for the logged-in user
+// Get all pending invitations for the current user
 export async function GET(_req: NextRequest) {
   try {
-    const { userId } = await auth();
-    if (!userId) {
-      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
-    }
+    const { userId, error } = await requireAuth();
+    if (error) return error;
 
-    // Get the user's email from Clerk — invitations are matched by email
+    // Resolve the user's primary email from Clerk
     const client = await clerkClient();
     const clerkUser = await client.users.getUser(userId);
     const userEmail = clerkUser.emailAddresses[0]?.emailAddress;
@@ -31,11 +30,10 @@ export async function GET(_req: NextRequest) {
 
     await connectDB();
 
-    // Find all pending invitations sent to this user's email
     const invitations = await Invitation.find({
       recipient: userEmail,
       status: "pending",
-    });
+    }).select("-__v").lean();
 
     return NextResponse.json(
       {
@@ -46,49 +44,33 @@ export async function GET(_req: NextRequest) {
       { status: 200 }
     );
   } catch (error: unknown) {
-    console.error("[GET /api/invitations] error:", error);
-    return NextResponse.json(
-      { message: "Internal server error" },
-      { status: 500 }
-    );
+    return serverError("GET /api/invitations", error);
   }
 }
 
-// POST /api/invitations — send an invitation to a user by email
+// Send a project invitation — only the project owner can invite
 export async function POST(req: NextRequest) {
   try {
-    const { userId } = await auth();
-    if (!userId) {
-      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
-    }
+    const { userId, error } = await requireAuth();
+    if (error) return error;
 
-    // Parse and validate the request body
     const body = await req.json();
-    const projectId: unknown = body.projectId;
-    const recipientEmail: unknown = body.email; // we invite by EMAIL
+    const parsed = invitationSchema.safeParse(body);
 
-    if (!projectId || typeof projectId !== "string") {
-      return NextResponse.json(
-        { message: "Project ID is required" },
-        { status: 400 }
-      );
+    if (!parsed.success) {
+      return validationError(parsed.error);
     }
 
-    if (!recipientEmail || typeof recipientEmail !== "string") {
-      return NextResponse.json(
-        { message: "Recipient email is required" },
-        { status: 400 }
-      );
-    }
+    const { projectId } = parsed.data;
+    const recipientEmail = parsed.data.email.toLowerCase().trim();
 
     await connectDB();
 
-    // Only the project owner can send invitations
-    const project = await Project.findOne({
-      _id: projectId,
-      "members.userId": userId,      // user must be in project
-      owner: userId,                 // and must be the owner
-    });
+    // Confirm the requester owns this project
+    const project = await Project.findOne(
+      { _id: projectId, owner: userId },
+      { members: 1 }
+    );
 
     if (!project) {
       return NextResponse.json(
@@ -97,19 +79,31 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Check if the email is already a member by looking up their Clerk account
+    // Check if the recipient already has an account and is a member
     const client = await clerkClient();
+
+    // Prevent the owner from inviting themselves
+    const senderUser = await client.users.getUser(userId);
+    const senderEmail = senderUser.emailAddresses[0]?.emailAddress?.toLowerCase();
+
+    if (senderEmail && senderEmail === recipientEmail) {
+      return NextResponse.json(
+        { message: "You cannot invite yourself" },
+        { status: 400 }
+      );
+    }
+
     const existingUsers = await client.users.getUserList({
       emailAddress: [recipientEmail],
     });
 
     const recipientClerkUser = existingUsers.data[0];
 
-    // If the person has an account, check if they're already a member
     if (recipientClerkUser) {
       const isAlreadyMember = project.members.some(
         (m: IProjectMember) => m.userId === recipientClerkUser.id
       );
+
       if (isAlreadyMember) {
         return NextResponse.json(
           { message: "This user is already a member of the project" },
@@ -118,7 +112,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Check if there's already a pending invitation to this email
+    // Prevent duplicate pending invitations to the same email
     const existingInvite = await Invitation.findOne({
       project: projectId,
       recipient: recipientEmail,
@@ -132,19 +126,18 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Create the invitation — token is auto-generated by the model default
     const invite = await Invitation.create({
       project: projectId,
-      inviter: userId,          // Clerk user ID of the sender
-      recipient: recipientEmail, // email of the person being invited
+      inviter: userId,
+      recipient: recipientEmail,
     });
 
-    // If the recipient already has an account, notify them in real-time
+    // Real-time notification — only fires if recipient already has an account
     if (recipientClerkUser) {
       await pusherServer.trigger(
         `private-user-${recipientClerkUser.id}`,
         "invitation:new",
-        {}
+        invite
       );
     }
 
@@ -153,10 +146,6 @@ export async function POST(req: NextRequest) {
       { status: 201 }
     );
   } catch (error: unknown) {
-    console.error("[POST /api/invitations] error:", error);
-    return NextResponse.json(
-      { message: "Internal server error" },
-      { status: 500 }
-    );
+    return serverError("POST /api/invitations", error);
   }
 }

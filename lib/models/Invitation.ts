@@ -1,13 +1,16 @@
 import mongoose, { Schema, Document, Model } from "mongoose";
 import crypto from "crypto";
+import { INVITATION_STATUSES, InvitationStatus } from "@/lib/types";
 
 export interface IInvitation extends Document {
   project: string;
   inviter: string;
   recipient: string;
   token: string;
-  status: "pending" | "accepted" | "declined" | "expired";
+  status: InvitationStatus;
   expiresAt: Date;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 const invitationSchema = new Schema<IInvitation>(
@@ -41,7 +44,7 @@ const invitationSchema = new Schema<IInvitation>(
 
     status: {
       type: String,
-      enum: ["pending", "accepted", "declined", "expired"],
+      enum: [...INVITATION_STATUSES],
       default: "pending",
     },
 

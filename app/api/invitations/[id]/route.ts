@@ -1,27 +1,32 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth, clerkClient } from "@clerk/nextjs/server";
+import { clerkClient } from "@clerk/nextjs/server";
 import { connectDB } from "@/lib/mongodb";
 import { Invitation } from "@/lib/models/Invitation";
 import { Project } from "@/lib/models/Project";
 import { pusherServer } from "@/lib/pusher";
+import mongoose from "mongoose";
+import { requireAuth, serverError } from "@/lib/api";
 
 export const runtime = "nodejs";
 
+// Accept or decline an invitation
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // Step 1: Auth check
-    const { userId } = await auth();
-    if (!userId) {
-      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
-    }
+    const { userId, error } = await requireAuth();
+    if (error) return error;
 
-    // Step 2: Await the params
     const { id } = await params;
 
-    // Step 3: Validate the action field
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return NextResponse.json(
+        { message: "Invalid invitation ID" },
+        { status: 400 }
+      );
+    }
+
     const body = await req.json();
     const action: unknown = body.action;
 
@@ -32,10 +37,8 @@ export async function PATCH(
       );
     }
 
-    // Step 4: Connect to DB
     await connectDB();
 
-    // Step 5: Find the invitation
     const invitation = await Invitation.findById(id);
     if (!invitation) {
       return NextResponse.json(
@@ -44,21 +47,18 @@ export async function PATCH(
       );
     }
 
-    // Step 6: Verify ownership.
-    // recipient stores the invitee's EMAIL. We need to fetch the current
-    // user's email from Clerk to compare it.
+    // Confirm the invitation belongs to the current user
     const client = await clerkClient();
     const clerkUser = await client.users.getUser(userId);
     const userEmail = clerkUser.emailAddresses[0]?.emailAddress;
 
-    if (!userEmail || invitation.recipient !== userEmail) {
+    if (!userEmail || invitation.recipient.toLowerCase() !== userEmail.toLowerCase()) {
       return NextResponse.json(
         { message: "This invitation was not sent to you" },
         { status: 403 }
       );
     }
 
-    // Step 7: Only pending invitations can be acted on
     if (invitation.status !== "pending") {
       return NextResponse.json(
         { message: "This invitation has already been responded to" },
@@ -66,33 +66,40 @@ export async function PATCH(
       );
     }
 
-    // Step 8: Handle accept or decline
     if (action === "accept") {
-      // Add the user to the project's members array with role "member"
-      // Using $push because $addToSet doesn't work well with subdocuments
+      // Guard against adding the same user twice if they somehow accept twice
+      const alreadyMember = await Project.exists({
+        _id: invitation.project,
+        "members.userId": userId,
+      });
+
+      if (alreadyMember) {
+        invitation.status = "accepted";
+        await invitation.save();
+        return NextResponse.json(
+          { success: true, message: "Already a member" },
+          { status: 200 }
+        );
+      }
+
       const updatedProject = await Project.findByIdAndUpdate(
         invitation.project,
-        {
-          $push: {
-            members: { userId: userId, role: "member" },
-          },
-        },
+        { $push: { members: { userId, role: "member" } } },
         { new: true }
       );
 
-      // Mark invitation as accepted
       invitation.status = "accepted";
       await invitation.save();
 
       if (updatedProject) {
-        // Notify all project members that the project was updated
+        // Notify existing members the project changed
         await pusherServer.trigger(
           `private-project-${updatedProject._id}`,
           "project:updated",
           updatedProject
         );
 
-        // Broadcast that a new user has joined this project
+        // Announce the new member to the project channel
         await pusherServer.trigger(
           `private-project-${updatedProject._id}`,
           "user:joined",
@@ -104,7 +111,7 @@ export async function PATCH(
         );
       }
 
-      // Notify the inviter that their invitation was accepted
+      // Tell the inviter their invitation was accepted
       await pusherServer.trigger(
         `private-user-${invitation.inviter}`,
         "invitation:accepted",
@@ -116,7 +123,7 @@ export async function PATCH(
         }
       );
 
-      // Tell the new member's dashboard to refresh
+      // Trigger a dashboard refresh for the newly joined user
       await pusherServer.trigger(
         `private-user-${userId}`,
         "dashboard:refetch",
@@ -127,35 +134,27 @@ export async function PATCH(
         { success: true, message: "Invitation accepted successfully" },
         { status: 200 }
       );
-    } else {
-      // Decline: just update the status
-      invitation.status = "declined";
-      await invitation.save();
-
-      const project = await Project.findById(invitation.project).select("name");
-
-      // Notify the inviter their invitation was declined
-      await pusherServer.trigger(
-        `private-user-${invitation.inviter}`,
-        "invitation:declined",
-        {
-          projectId: invitation.project,
-          projectName: project?.name ?? "a project",
-          recipientId: userId,
-          recipientName: clerkUser.fullName || clerkUser.firstName || "A user",
-        }
-      );
-
-      return NextResponse.json(
-        { success: true, message: "Invitation declined successfully" },
-        { status: 200 }
-      );
     }
-  } catch (error: unknown) {
-    console.error("[PATCH /api/invitations/[id]] error:", error);
-    return NextResponse.json(
-      { message: "Internal server error" },
-      { status: 500 }
+
+    // Decline path
+    invitation.status = "declined";
+    await invitation.save();
+
+    await pusherServer.trigger(
+      `private-user-${invitation.inviter}`,
+      "invitation:declined",
+      {
+        projectId: invitation.project,
+        recipientId: userId,
+        recipientName: clerkUser.fullName || clerkUser.firstName || "A user",
+      }
     );
+
+    return NextResponse.json(
+      { success: true, message: "Invitation declined successfully" },
+      { status: 200 }
+    );
+  } catch (error: unknown) {
+    return serverError("PATCH /api/invitations/[id]", error);
   }
 }
