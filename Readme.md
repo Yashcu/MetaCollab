@@ -19,26 +19,77 @@ A full-stack collaborative project management app built with Next.js 14, MongoDB
 
 ## Project Structure
 
+```text
 MetaCollab/
-├── app/                    # Next.js App Router pages and API routes
-│   ├── (auth)/             # Clerk sign-in / sign-up pages
-│   ├── api/                # API route handlers
-│   ├── dashboard/          # Dashboard pages
-│   └── projects/[id]/      # Project pages (tasks, chat, call)
-├── components/             # React components
-│   ├── call/               # Video call UI
-│   ├── chat/               # Chat UI
-│   ├── dashboard/          # Dashboard-specific components
-│   ├── project/            # Project-specific components
-│   ├── shared/             # Layout shells, sidebar, spinner
-│   └── ui/                 # shadcn/ui primitives
-├── hooks/                  # Custom React hooks
+├── app/                          # Next.js App Router pages and API routes
+│   ├── (auth)/                   # Clerk sign-in / sign-up pages
+│   ├── api/                      # API route handlers
+│   │   ├── admin/
+│   │   ├── invitations/
+│   │   ├── projects/
+│   │   ├── pusher/
+│   │   ├── tasks/
+│   │   └── users/
+│   ├── dashboard/                # Dashboard pages
+│   │   ├── settings/             # User settings page
+│   │   ├── layout.tsx
+│   │   └── page.tsx
+│   ├── projects/
+│   │   └── [id]/                 # Project pages (tasks, chat, call)
+│   │       ├── call/
+│   │       ├── chat/
+│   │       ├── layout.tsx
+│   │       └── page.tsx
+│   ├── fonts/                    # Local font assets
+│   ├── globals.css
+│   ├── layout.tsx                # Root layout (ClerkProvider, ThemeProvider)
+│   ├── loading.tsx
+│   ├── error.tsx
+│   ├── not-found.tsx
+│   └── page.tsx                  # Landing / redirect page
+├── components/                   # React components
+│   ├── call/                     # Video call UI
+│   ├── chat/                     # Chat UI
+│   ├── dashboard/                # Dashboard-specific components
+│   ├── project/                  # Project-specific components
+│   ├── realtime/                 # Pusher channel subscription wrappers
+│   ├── shared/                   # Layout shells, sidebar, spinner
+│   └── ui/                       # shadcn/ui primitives
+├── hooks/                        # Custom React hooks
+│   ├── useDashboardRealtime.ts
+│   ├── useInvitationRealtime.ts
+│   ├── useKickedFromProject.ts
+│   └── useTheme.ts
 ├── lib/
-│   ├── models/             # Mongoose models
-│   └── mongodb.ts          # DB connection with hot-reload guard
-├── services/               # Business logic (no DB calls in routes)
-├── store/                  # Zustand stores (UI state only)
-└── middleware.ts            # Clerk auth guards
+│   ├── models/                   # Mongoose models
+│   │   ├── Invitation.ts
+│   │   ├── Project.ts
+│   │   ├── Task.ts
+│   │   └── User.ts
+│   ├── mongodb.ts                # DB connection with hot-reload guard
+│   ├── pusher.ts                 # Server-side Pusher instance
+│   ├── pusher-client.ts          # Client-side Pusher instance
+│   └── utils.ts                  # Shared utility helpers
+├── services/                     # Business logic (no DB calls in routes)
+│   ├── adminService.ts
+│   ├── fetcher.ts
+│   ├── invitationService.ts
+│   ├── projectService.ts
+│   ├── taskService.ts
+│   └── userService.ts
+├── store/                        # Zustand stores (UI state only)
+│   ├── callStore.ts
+│   ├── chatStore.ts
+│   ├── invitationStore.ts
+│   ├── projectStore.ts
+│   └── uiStore.ts
+├── middleware.ts                  # Clerk auth guards
+├── next.config.mjs
+├── postcss.config.mjs
+├── tailwind.config.ts
+├── tsconfig.json
+└── package.json
+```
 
 ---
 
