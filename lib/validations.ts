@@ -14,35 +14,43 @@ export const taskSchema = z.object({
     assigneeId: z.string().optional(),
     status: z.enum(TASK_STATUSES).optional(),
     priority: z.enum(TASK_PRIORITIES).optional(),
-    dueDate: z.string().optional(),
+    dueDate: z.coerce.date().optional(),
 });
 
-export const taskUpdateSchema = taskSchema.partial().omit({ project: true }).extend({
-    order: z.number().optional(),
-    assigneeId: z.string().nullable().optional(),
-    dueDate: z.string().nullable().optional(),
-}).refine(
-    (data) => Object.values(data).some((v) => v !== undefined),
-    { message: "At least one field must be provided" }
-);
+// project is immutable after creation — omitted intentionally
+export const taskUpdateSchema = taskSchema
+    .partial()
+    .omit({ project: true })
+    .extend({
+        order: z.number().optional(),
+        assigneeId: z.string().nullable().optional(),
+        dueDate: z.string().nullable().optional(),
+    })
+    .refine((data) => Object.values(data).some((v) => v !== undefined), {
+        message: "At least one field must be provided",
+    });
 
 export const invitationSchema = z.object({
-    projectId: z.string().min(1, "Project ID is required"),
+    projectId: z.string().refine(isValidObjectId, {
+        message: "Invalid project ID",
+    }),
     email: z.string().email("Invalid email address"),
 });
 
-export const userUpdateSchema = z.object({
-    firstName: z.string().min(1).max(50).optional(),
-    lastName: z.string().max(50).optional(),
-}).refine(
-    (data) => data.firstName !== undefined || data.lastName !== undefined,
-    { message: "At least one field (firstName or lastName) is required" }
-);
+export const userUpdateSchema = z
+    .object({
+        firstName: z.string().min(1).max(50).optional(),
+        lastName: z.string().max(50).optional(),
+    })
+    .refine((data) => data.firstName !== undefined || data.lastName !== undefined, {
+        message: "At least one field (firstName or lastName) is required",
+    });
 
-export const projectUpdateSchema = z.object({
-    name: z.string().min(1).max(100).optional(),
-    description: z.string().max(500).optional(),
-}).refine(
-    (data) => data.name !== undefined || data.description !== undefined,
-    { message: "At least one field (name or description) is required" }
-);
+export const projectUpdateSchema = z
+    .object({
+        name: z.string().min(1).max(100).optional(),
+        description: z.string().max(500).optional(),
+    })
+    .refine((data) => data.name !== undefined || data.description !== undefined, {
+        message: "At least one field (name or description) is required",
+    });

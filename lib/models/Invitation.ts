@@ -20,13 +20,11 @@ const invitationSchema = new Schema<IInvitation>(
       required: [true, "Project ID is required"],
       index: true,
     },
-
     inviter: {
       type: String,
       required: [true, "Inviter user ID is required"],
       index: true,
     },
-
     recipient: {
       type: String,
       required: [true, "Recipient email is required"],
@@ -34,20 +32,17 @@ const invitationSchema = new Schema<IInvitation>(
       trim: true,
       index: true,
     },
-
     token: {
       type: String,
       required: true,
       unique: true,
       default: () => crypto.randomBytes(32).toString("hex"),
     },
-
     status: {
       type: String,
       enum: [...INVITATION_STATUSES],
       default: "pending",
     },
-
     expiresAt: {
       type: Date,
       default: () => new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
@@ -61,6 +56,7 @@ const invitationSchema = new Schema<IInvitation>(
         ret.id = ret._id;
         delete ret._id;
         delete ret.__v;
+        // never expose token over the wire
         delete ret.token;
       },
     },
@@ -76,12 +72,10 @@ const invitationSchema = new Schema<IInvitation>(
 invitationSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 invitationSchema.index(
   { project: 1, recipient: 1, status: 1 },
-  {
-    unique: true,
-    partialFilterExpression: { status: "pending" },
-  }
+  { unique: true, partialFilterExpression: { status: "pending" } }
 );
+invitationSchema.index({ recipient: 1, status: 1 });
 
 export const Invitation: Model<IInvitation> =
-  mongoose.models.Invitation ||
+  mongoose.models.Invitation ??
   mongoose.model<IInvitation>("Invitation", invitationSchema);

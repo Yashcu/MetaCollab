@@ -17,7 +17,7 @@ export async function requireAuth(): Promise<{ userId: string; error: null } | {
 // replaces the repeated Zod error response pattern
 export function validationError(error: ZodError): NextResponse {
     return NextResponse.json(
-        { message: error.errors[0]?.message ?? "Invalid input" },
+        { message: error.issues[0]?.message ?? "Invalid input" },
         { status: 400 }
     );
 }
