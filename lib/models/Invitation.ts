@@ -36,7 +36,6 @@ const invitationSchema = new Schema<IInvitation>(
       type: String,
       required: true,
       unique: true,
-      index: true,
       default: () => crypto.randomBytes(32).toString("hex"),
     },
 
