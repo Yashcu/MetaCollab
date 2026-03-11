@@ -1,12 +1,12 @@
 import { fetchJson } from "./fetcher";
 
-/** A single member of a project, with their role */
+// A project member with their role
 export interface ProjectMember {
   userId: string;
   role: "owner" | "admin" | "member";
 }
 
-/** A project document as returned by the API */
+// Project data returned from the API
 export interface Project {
   id: string;
   name: string;
@@ -17,28 +17,24 @@ export interface Project {
   updatedAt: string;
 }
 
-/** Fields accepted when creating a new project */
+// Data required to create a project
 export interface CreateProjectInput {
   name: string;
   description?: string;
 }
 
-/** Fields accepted when updating an existing project */
+// Fields that can be updated on a project
 export interface UpdateProjectInput {
   name?: string;
   description?: string;
 }
 
-/**
- * Fetch all projects the current user belongs to.
- */
+// Get all projects for the current user
 export const getProjects = async (): Promise<Project[]> => {
   return fetchJson<Project[]>("/api/projects", { method: "GET" });
 };
 
-/**
- * Create a new project. The current user becomes the owner automatically.
-*/
+// Create a new project
 export const createProject = async (
   projectData: CreateProjectInput
 ): Promise<Project> => {
@@ -48,18 +44,12 @@ export const createProject = async (
   });
 };
 
-/**
- * Fetch a single project by its MongoDB ID.
- * The current user must be a member of the project.
-*/
+// Get a project by ID
 export const getProjectById = async (projectId: string): Promise<Project> => {
   return fetchJson<Project>(`/api/projects/${projectId}`, { method: "GET" });
 };
 
-/**
- * Update a project's name or description.
- * Only the project owner can do this.
-*/
+// Update project details
 export const updateProject = async (
   projectId: string,
   data: UpdateProjectInput
@@ -70,24 +60,7 @@ export const updateProject = async (
   });
 };
 
-/**
- * Delete a project and all its tasks and invitations.
- * Only the project owner can do this.
-*/
+// Delete a project
 export const deleteProject = async (projectId: string): Promise<void> => {
   return fetchJson<void>(`/api/projects/${projectId}`, { method: "DELETE" });
-};
-
-/**
- * Invite a user to a project by their email address.
- * Only the project owner can invite members. 
-*/
-export const inviteMember = async (
-  projectId: string,
-  email: string
-): Promise<void> => {
-  await fetchJson<void>("/api/invitations", {
-    method: "POST",
-    body: JSON.stringify({ projectId, email }),
-  });
 };

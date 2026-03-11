@@ -1,6 +1,6 @@
 import { fetchJson } from "./fetcher";
 
-/** An invitation document as returned by the API */
+// Invitation data returned from the API
 export interface Invitation {
   id: string;
   project: string;
@@ -11,18 +11,12 @@ export interface Invitation {
   createdAt: string;
 }
 
-/**
- * Fetch all pending invitations for the currently logged-in user.
- * Matched by the user's email address.
- */
+// Get all invitations for the current user
 export const getMyInvitations = async (): Promise<Invitation[]> => {
   return fetchJson<Invitation[]>("/api/invitations", { method: "GET" });
 };
 
-/**
- * Accept a pending invitation.
- * This adds the current user to the project's members list.
-*/
+// Accept an invitation and join the project
 export const acceptInvitation = async (
   invitationId: string
 ): Promise<void> => {
@@ -32,15 +26,23 @@ export const acceptInvitation = async (
   });
 };
 
-/**
- * Decline a pending invitation.
- * The invitation status is set to "declined" and no project access is granted.
-*/
+// Decline an invitation
 export const declineInvitation = async (
   invitationId: string
 ): Promise<void> => {
   return fetchJson<void>(`/api/invitations/${invitationId}`, {
     method: "PATCH",
     body: JSON.stringify({ action: "decline" }),
+  });
+};
+
+// Send a project invitation via email
+export const inviteMember = async (
+  projectId: string,
+  email: string
+): Promise<void> => {
+  await fetchJson<void>("/api/invitations", {
+    method: "POST",
+    body: JSON.stringify({ projectId, email }),
   });
 };

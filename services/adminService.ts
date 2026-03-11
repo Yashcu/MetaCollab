@@ -7,10 +7,7 @@ interface AdminStats {
   tasksCompleted: number;
 }
 
-/**
- * Fetch platform-wide statistics for the admin dashboard.
- * Only works if the current user has the "admin" role in Clerk's publicMetadata.
- */
+// Gets platform statistics for the admin dashboard
 export const getAdminStats = async (): Promise<AdminStats> => {
   return fetchJson<AdminStats>("/api/admin", { method: "GET" });
 };
