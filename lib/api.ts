@@ -24,6 +24,10 @@ export function validationError(error: ZodError): NextResponse {
 
 // replaces the repeated 500 catch block
 export function serverError(route: string, error: unknown): NextResponse {
-    console.error(`[${route}] error:`, error);
+    if (error instanceof Error) {
+        console.error(`[${route}]`, error.message, error.stack);
+    } else {
+        console.error(`[${route}]`, JSON.stringify(error));
+    }
     return NextResponse.json({ message: "Internal server error" }, { status: 500 });
 }

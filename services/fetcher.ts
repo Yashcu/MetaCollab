@@ -11,20 +11,33 @@ export const fetchJson = async <T>(
   }
 
   try {
-    const response = await fetch(url, {
-      ...options,
-      headers: {
-        // only set Content-Type when sending a body — GET requests have none
-        ...(options.body != null && { "Content-Type": "application/json" }),
-        ...(options.headers as Record<string, string>),
-      },
-    });
+    let response: Response;
+
+    try {
+      response = await fetch(url, {
+        ...options,
+        headers: {
+          ...(options.body != null && { "Content-Type": "application/json" }),
+          ...(options.headers as Record<string, string>),
+        },
+      });
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") {
+        throw new Error("Request timed out");
+      }
+      throw err;
+    }
 
     let parsedData: unknown = null;
-    try {
-      parsedData = await response.json();
-    } catch {
-      parsedData = null;
+
+    const contentLength = response.headers.get("content-length");
+
+    if (contentLength !== "0") {
+      try {
+        parsedData = await response.json();
+      } catch {
+        parsedData = null;
+      }
     }
 
     if (!response.ok) {

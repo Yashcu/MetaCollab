@@ -1,6 +1,8 @@
 import { fetchJson } from "./fetcher";
 import { TaskStatus, TaskPriority } from "@/lib/types";
 
+const BATCH_SIZE = 5;
+
 // Task data returned from the API
 export interface Task {
   id: string;
@@ -76,9 +78,13 @@ export const deleteTask = async (taskId: string): Promise<void> => {
 export const reorderTasks = async (
   reorderedTasks: Array<{ id: string; order: number }>
 ): Promise<void> => {
-  await Promise.all(
-    reorderedTasks.map((task) =>
-      updateTask(task.id, { order: task.order })
-    )
-  );
+  for (let i = 0; i < reorderedTasks.length; i += BATCH_SIZE) {
+    const batch = reorderedTasks.slice(i, i + BATCH_SIZE);
+
+    await Promise.all(
+      batch.map((task) =>
+        updateTask(task.id, { order: task.order })
+      )
+    );
+  }
 };
