@@ -11,16 +11,16 @@ import { updateTask } from "@/services/taskService";
 import { LoadingSpinner } from "@/components/shared/LoadingSpinner";
 import type { Task } from "@/services/taskService";
 
-type Status = "todo" | "in-progress" | "done";
+type Status = "todo" | "in_progress" | "done";
 
 const columns: { id: Status; label: string; accent: string; dot: string }[] = [
     { id: "todo", label: "To Do", accent: "border-white/10", dot: "bg-white/20" },
-    { id: "in-progress", label: "In Progress", accent: "border-amber-500/20", dot: "bg-amber-400" },
+    { id: "in_progress", label: "In Progress", accent: "border-amber-500/20", dot: "bg-amber-400" },
     { id: "done", label: "Done", accent: "border-cyan-500/20", dot: "bg-cyan-400" },
 ];
 
 export default function ProjectPage() {
-    const { tasks, isLoading, activeProject, fetchTasks, reorderTasks } = useProjectStore();
+    const { tasks, isLoadingTasks: isLoading, activeProject, fetchTasks, setTasks } = useProjectStore();
     const [createOpen, setCreateOpen] = useState(false);
     const [inviteOpen, setInviteOpen] = useState(false);
     const [defaultStatus, setDefaultStatus] = useState<Status>("todo");
@@ -36,30 +36,51 @@ export default function ProjectPage() {
         e.dataTransfer.effectAllowed = "move";
     }, []);
 
+    // BUG FIX: missing onDragEnd handler — if the user drags a card and drops it
+    // outside any column, draggedTaskId would stay set forever and the next drop
+    // on any column would move the wrong task.
+    const handleDragEnd = useCallback(() => {
+        setDraggedTaskId(null);
+    }, []);
+
     const handleDrop = useCallback(
         async (e: React.DragEvent, targetStatus: Status) => {
             e.preventDefault();
             if (!draggedTaskId || !activeProject) return;
 
             const task = tasks.find((t) => t.id === draggedTaskId);
-            if (!task || task.status === targetStatus) return;
+            if (!task || task.status === targetStatus) {
+                setDraggedTaskId(null);
+                return;
+            }
 
-            // Optimistic update
-            const updatedTasks = tasks.map((t) =>
+            // BUG FIX 1: was calling reorderTasks(updatedTasks) here which triggered
+            // debouncedSaveReorder -> POST /api/tasks/reorder with order payloads.
+            // But we're changing STATUS not order position — that's updateTask's job.
+            // reorderTasks is only for drag-within-same-column reordering.
+            // Fix: directly update local state via setTasks for the optimistic update.
+
+            // BUG FIX 2: the old code called fetchTasks BOTH on success AND on failure
+            // (via catch). Success case should trust the optimistic update + Pusher;
+            // only revert to a fetch on failure.
+            const originalTasks = tasks;
+            const optimisticTasks = tasks.map((t) =>
                 t.id === draggedTaskId ? { ...t, status: targetStatus } : t
             );
-            reorderTasks(updatedTasks);
+            setTasks(optimisticTasks);
+            setDraggedTaskId(null);
 
             try {
                 await updateTask(draggedTaskId, { status: targetStatus });
-                await fetchTasks(activeProject.id);
+                // Pusher will broadcast task:updated to all members.
+                // No need to fetchTasks here — optimistic update already applied.
             } catch {
-                await fetchTasks(activeProject.id); // revert on error
+                // Revert optimistic update on failure
+                setTasks(originalTasks);
+                await fetchTasks(activeProject.id);
             }
-
-            setDraggedTaskId(null);
         },
-        [draggedTaskId, tasks, activeProject, reorderTasks, fetchTasks]
+        [draggedTaskId, tasks, activeProject, setTasks, fetchTasks]
     );
 
     const handleDragOver = (e: React.DragEvent) => {
@@ -134,10 +155,10 @@ export default function ProjectPage() {
                                         key={task.id}
                                         task={task}
                                         onDragStart={handleDragStart}
+                                        onDragEnd={handleDragEnd}
                                     />
                                 ))}
 
-                                {/* Add task button at bottom of column */}
                                 <button
                                     onClick={() => openCreateFor(id)}
                                     className="flex items-center gap-2 px-3 py-2.5 rounded-lg text-white/20 hover:text-white/40 hover:bg-white/[0.03] transition-all duration-150 text-sm mt-1"

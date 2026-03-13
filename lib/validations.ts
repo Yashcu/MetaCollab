@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { isValidObjectId } from "@/lib/utils";
 import { TASK_STATUSES, TASK_PRIORITIES } from "@/lib/types";
 
 export const projectSchema = z.object({
@@ -10,8 +9,8 @@ export const projectSchema = z.object({
 export const taskSchema = z.object({
     title: z.string().min(1, "Task title is required").max(200),
     description: z.string().max(2000).optional(),
-    project: z.string().refine(isValidObjectId, { message: "Invalid project ID" }),
-    assigneeId: z.string().optional(),
+    project: z.string().uuid("Invalid project ID"),
+    assigneeId: z.string().uuid().optional().or(z.literal("")),
     status: z.enum(TASK_STATUSES).optional(),
     priority: z.enum(TASK_PRIORITIES).optional(),
     dueDate: z.coerce.date().optional(),
@@ -23,7 +22,7 @@ export const taskUpdateSchema = taskSchema
     .omit({ project: true })
     .extend({
         order: z.number().optional(),
-        assigneeId: z.string().nullable().optional(),
+        assigneeId: z.string().uuid().nullable().optional().or(z.literal("")),
         dueDate: z.string().nullable().optional(),
     })
     .refine((data) => Object.values(data).some((v) => v !== undefined), {
@@ -31,9 +30,7 @@ export const taskUpdateSchema = taskSchema
     });
 
 export const invitationSchema = z.object({
-    projectId: z.string().refine(isValidObjectId, {
-        message: "Invalid project ID",
-    }),
+    projectId: z.string().uuid("Invalid project ID"),
     email: z.string().email("Invalid email address"),
 });
 

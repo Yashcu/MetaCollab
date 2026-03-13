@@ -38,11 +38,12 @@ export const useUIStore = create<UIState>()(
     }),
     {
       name: "ui-storage",
+      version: 1,
 
       partialize: (state) => ({
         theme: state.theme,
         isSidebarOpen: state.isSidebarOpen,
       }),
-    }
+    },
   )
 );

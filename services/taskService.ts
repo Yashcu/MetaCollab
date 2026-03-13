@@ -1,8 +1,6 @@
 import { fetchJson } from "./fetcher";
 import { TaskStatus, TaskPriority } from "@/lib/types";
 
-const BATCH_SIZE = 5;
-
 // Task data returned from the API
 export interface Task {
   id: string;
@@ -10,15 +8,17 @@ export interface Task {
   description: string;
   status: TaskStatus;
   priority: TaskPriority;
-  project: string;
-  assignee?: string;
+  // BUG FIX: the Prisma model field is `projectId`, not `project`.
+  // The old interface had `project: string` which never matched the actual API response,
+  // causing task.projectId to be undefined everywhere it was used.
+  projectId: string;
+  assignee?: string | null;
   order: number;
-  dueDate?: string;
+  dueDate?: string | null;
   createdAt: string;
   updatedAt: string;
 }
 
-// Data required to create a task
 export interface CreateTaskInput {
   title: string;
   description?: string;
@@ -28,7 +28,6 @@ export interface CreateTaskInput {
   dueDate?: string;
 }
 
-// Fields that can be updated on a task
 export interface UpdateTaskInput {
   title?: string;
   description?: string;
@@ -39,7 +38,6 @@ export interface UpdateTaskInput {
   dueDate?: string | null;
 }
 
-// Get all tasks for a project
 export const getTasks = async (projectId: string): Promise<Task[]> => {
   return fetchJson<Task[]>(
     `/api/tasks?projectId=${encodeURIComponent(projectId)}`,
@@ -47,18 +45,17 @@ export const getTasks = async (projectId: string): Promise<Task[]> => {
   );
 };
 
-// Create a task in a project
 export const createTask = async (
   projectId: string,
   taskData: CreateTaskInput
 ): Promise<Task> => {
   return fetchJson<Task>("/api/tasks", {
     method: "POST",
+    // API expects the field named "project" in the request body (maps to projectId in schema)
     body: JSON.stringify({ ...taskData, project: projectId }),
   });
 };
 
-// Update a task
 export const updateTask = async (
   taskId: string,
   data: UpdateTaskInput
@@ -69,22 +66,16 @@ export const updateTask = async (
   });
 };
 
-// Delete a task
 export const deleteTask = async (taskId: string): Promise<void> => {
   return fetchJson<void>(`/api/tasks/${taskId}`, { method: "DELETE" });
 };
 
-// ⚠️ fires N individual PATCH requests — replace with bulk endpoint when board grows large
 export const reorderTasks = async (
+  projectId: string,
   reorderedTasks: Array<{ id: string; order: number }>
 ): Promise<void> => {
-  for (let i = 0; i < reorderedTasks.length; i += BATCH_SIZE) {
-    const batch = reorderedTasks.slice(i, i + BATCH_SIZE);
-
-    await Promise.all(
-      batch.map((task) =>
-        updateTask(task.id, { order: task.order })
-      )
-    );
-  }
+  return fetchJson<void>("/api/tasks/reorder", {
+    method: "PATCH",
+    body: JSON.stringify({ projectId, tasks: reorderedTasks }),
+  });
 };

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useUser } from "@clerk/nextjs";
 import { toast } from "sonner";
 import { Loader2, User, Moon, Sun, Monitor } from "lucide-react";
@@ -22,9 +22,16 @@ export default function SettingsPage() {
     const { user } = useUser();
     const { theme, setTheme } = useUIStore();
 
-    const [firstName, setFirstName] = useState(user?.firstName ?? "");
-    const [lastName, setLastName] = useState(user?.lastName ?? "");
+    const [firstName, setFirstName] = useState("");
+    const [lastName, setLastName] = useState("");
     const [isLoading, setIsLoading] = useState(false);
+
+    useEffect(() => {
+        if (user) {
+            setFirstName(user.firstName ?? "");
+            setLastName(user.lastName ?? "");
+        }
+    }, [user]);
 
     const handleSave = async () => {
         if (!user?.id) return;
@@ -128,8 +135,8 @@ export default function SettingsPage() {
                                 key={value}
                                 onClick={() => setTheme(value)}
                                 className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border text-sm font-medium transition-all duration-150 ${theme === value
-                                        ? "border-cyan-400/50 bg-cyan-400/10 text-cyan-300"
-                                        : "border-white/10 bg-white/[0.03] text-white/40 hover:text-white/70 hover:border-white/20"
+                                    ? "border-cyan-400/50 bg-cyan-400/10 text-cyan-300"
+                                    : "border-white/10 bg-white/[0.03] text-white/40 hover:text-white/70 hover:border-white/20"
                                     }`}
                             >
                                 {icon}

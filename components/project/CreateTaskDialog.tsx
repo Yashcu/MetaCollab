@@ -14,7 +14,7 @@ import { useProjectStore } from "@/store/projectStore";
 interface CreateTaskDialogProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
-    defaultStatus?: "todo" | "in-progress" | "done";
+    defaultStatus?: "todo" | "in_progress" | "done";
 }
 
 export function CreateTaskDialog({

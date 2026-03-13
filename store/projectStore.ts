@@ -20,8 +20,9 @@ interface ProjectState {
   projects: Project[];
   activeProject: Project | null;
   tasks: Task[];
-  cursors: Map<string, Omit<Cursor, "user">>;
-  isLoading: boolean;
+  cursors: Record<string, Omit<Cursor, "user">>;
+  isLoadingProjects: boolean;
+  isLoadingTasks: boolean;
   error: string | null;
 
   fetchProjects: () => Promise<void>;
@@ -32,9 +33,9 @@ interface ProjectState {
   setActiveProject: (project: Project) => void;
   initializeProject: (project: Project, tasks: Task[]) => void;
   reorderTasks: (reorderedTasks: Task[]) => void;
-  setCursors: (cursors: Map<string, Omit<Cursor, "user">>) => void;
+  setCursors: (cursors: Record<string, Omit<Cursor, "user">>) => void;
   clearProject: () => void;
-  reset: () => void; // called on logout
+  reset: () => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -42,10 +43,6 @@ interface ProjectState {
 //
 // When the user drags a task, we update the UI immediately (optimistic).
 // Then we wait 800ms of inactivity before saving to the server.
-// This prevents sending a PATCH request for every pixel of mouse movement.
-//
-// Uses the service function (which sends individual PATCH requests per task)
-// instead of the old non-existent bulk reorder endpoint.
 // ---------------------------------------------------------------------------
 function debounce<T extends (...args: Parameters<T>) => void>(fn: T, ms: number): T {
   let timer: ReturnType<typeof setTimeout>;
@@ -57,6 +54,7 @@ function debounce<T extends (...args: Parameters<T>) => void>(fn: T, ms: number)
 
 const debouncedSaveReorder = debounce(
   async (
+    projectId: string,
     reorderedTasks: Task[],
     originalTasks: Task[],
     setTasksFn: (tasks: Task[]) => void
@@ -67,32 +65,30 @@ const debouncedSaveReorder = debounce(
         order: task.order,
       }));
 
-      await reorderTasksService(payload);
+      // BUG FIX: reorderTasksService requires (projectId, tasks[]) — projectId was missing
+      await reorderTasksService(projectId, payload);
     } catch (error) {
       console.error("[projectStore] Failed to save task order:", error);
-
-      // Save failed — revert the UI back to the original order
       setTasksFn(originalTasks);
-
       toast.error("Failed to save order", {
         description: "Task order has been reverted.",
       });
     }
   },
-  800 // wait 800ms after the last drag event before saving
+  800
 );
 
 export const useProjectStore = create<ProjectState>((set, get) => ({
   projects: [],
   activeProject: null,
   tasks: [],
-  cursors: new Map(),
-  isLoading: false,
+  cursors: {},
+  isLoadingProjects: false,
+  isLoadingTasks: false,
   error: null,
 
-  // Fetch all projects the current user belongs to
   fetchProjects: async () => {
-    set({ isLoading: true, error: null });
+    set({ isLoadingProjects: true, error: null });
     try {
       const projects = await getProjects();
       set({ projects });
@@ -102,13 +98,12 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       set({ error: message });
       toast.error("Could not load projects", { description: message });
     } finally {
-      set({ isLoading: false });
+      set({ isLoadingProjects: false });
     }
   },
 
-  // Fetch a single project and set it as the active project
   fetchProjectById: async (projectId: string) => {
-    set({ isLoading: true, error: null });
+    set({ isLoadingProjects: true, error: null });
     try {
       const project = await getProjectById(projectId);
       set({ activeProject: project });
@@ -118,13 +113,12 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       set({ error: message });
       toast.error("Could not load project", { description: message });
     } finally {
-      set({ isLoading: false });
+      set({ isLoadingProjects: false });
     }
   },
 
-  // Fetch all tasks for the active project
   fetchTasks: async (projectId: string) => {
-    set({ isLoading: true, error: null });
+    set({ isLoadingTasks: true, error: null });
     try {
       const tasks = await getTasks(projectId);
       set({ tasks });
@@ -134,7 +128,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       set({ error: message });
       toast.error("Could not load tasks", { description: message });
     } finally {
-      set({ isLoading: false });
+      set({ isLoadingTasks: false });
     }
   },
 
@@ -142,49 +136,53 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   setTasks: (tasks) => set({ tasks }),
   setActiveProject: (project) => set({ activeProject: project }),
 
-  // Set both project and tasks at once — used when entering a project view
   initializeProject: (project, tasks) => {
     set({
       activeProject: project,
       tasks,
-      cursors: new Map(), // clear other users' cursors when entering a new project
+      cursors: {},
       error: null,
     });
   },
 
   // Called after drag-and-drop: update task order in UI immediately,
-  // then save to server after a short debounce delay.
+  // then save to server after debounce.
   reorderTasks: (reorderedTasks: Task[]) => {
+    const { activeProject } = get();
+    // BUG FIX: bail out early if no active project — we need the projectId for the API call
+    if (!activeProject) return;
+
     const originalTasks = get().tasks;
     set({ tasks: reorderedTasks });
 
     debouncedSaveReorder(
+      activeProject.id,
       reorderedTasks,
       originalTasks,
       (tasks) => set({ tasks })
     );
   },
 
-  setCursors: (cursors) => set({ cursors }),
+  setCursors: (cursors) =>
+    set({ cursors: { ...cursors } }),
 
-  // Leave the current project — clear tasks, cursors, and active project
   clearProject: () => {
     set({
       activeProject: null,
       tasks: [],
-      cursors: new Map(),
+      cursors: {},
       error: null,
     });
   },
 
-  // Full reset on logout — clear everything
   reset: () => {
     set({
       projects: [],
       activeProject: null,
       tasks: [],
-      cursors: new Map(),
-      isLoading: false,
+      cursors: {},
+      isLoadingProjects: false,
+      isLoadingTasks: false,
       error: null,
     });
   },

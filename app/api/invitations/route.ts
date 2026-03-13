@@ -1,12 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { clerkClient } from "@clerk/nextjs/server";
-import { connectDB } from "@/lib/mongodb";
-import { Invitation } from "@/lib/models/Invitation";
-import { Project } from "@/lib/models/Project";
-import type { IProjectMember } from "@/lib/models/Project";
+import crypto from "crypto";
+import { prisma } from "@/lib/prisma";
 import { pusherServer } from "@/lib/pusher";
 import { invitationSchema } from "@/lib/validations";
-import { requireAuth, validationError, serverError } from "@/lib/api";
+import { requireAuth, validationError, serverError, validateJsonContentType } from "@/lib/api";
 
 export const runtime = "nodejs";
 
@@ -28,12 +26,12 @@ export async function GET() {
       );
     }
 
-    await connectDB();
-
-    const invitations = await Invitation.find({
-      recipient: userEmail,
-      status: "pending",
-    }).select("-__v").lean();
+    const invitations = await prisma.invitation.findMany({
+      where: {
+        recipient: userEmail,
+        status: "pending",
+      },
+    });
 
     return NextResponse.json(
       {
@@ -54,6 +52,10 @@ export async function POST(req: NextRequest) {
     const { userId, error } = await requireAuth();
     if (error) return error;
 
+    // Reject non-JSON bodies early
+    const contentTypeError = validateJsonContentType(req);
+    if (contentTypeError) return contentTypeError;
+
     const body = await req.json();
     const parsed = invitationSchema.safeParse(body);
 
@@ -64,28 +66,29 @@ export async function POST(req: NextRequest) {
     const { projectId } = parsed.data;
     const recipientEmail = parsed.data.email.toLowerCase().trim();
 
-    await connectDB();
-
     // Confirm the requester owns this project
-    const project = await Project.findOne(
-      { _id: projectId, owner: userId },
-      { members: 1 }
-    );
+    const project = await prisma.project.findUnique({
+      where: { id: projectId },
+      include: { members: true },
+    });
 
-    if (!project) {
+    if (!project || project.owner !== userId) {
       return NextResponse.json(
         { message: "Project not found or you are not the owner" },
         { status: 404 }
       );
     }
 
-    // Check if the recipient already has an account and is a member
     const client = await clerkClient();
 
-    // Prevent the owner from inviting themselves
-    const senderUser = await client.users.getUser(userId);
-    const senderEmail = senderUser.emailAddresses[0]?.emailAddress?.toLowerCase();
+    // Parallelize both Clerk calls — they are independent, no need to await serially
+    const [senderUser, existingUsers] = await Promise.all([
+      client.users.getUser(userId),
+      client.users.getUserList({ emailAddress: [recipientEmail] }),
+    ]);
 
+    // Prevent the owner from inviting themselves
+    const senderEmail = senderUser.emailAddresses[0]?.emailAddress?.toLowerCase();
     if (senderEmail && senderEmail === recipientEmail) {
       return NextResponse.json(
         { message: "You cannot invite yourself" },
@@ -93,15 +96,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const existingUsers = await client.users.getUserList({
-      emailAddress: [recipientEmail],
-    });
-
     const recipientClerkUser = existingUsers.data[0];
 
     if (recipientClerkUser) {
       const isAlreadyMember = project.members.some(
-        (m: IProjectMember) => m.userId === recipientClerkUser.id
+        (m: any) => m.userId === recipientClerkUser.id
       );
 
       if (isAlreadyMember) {
@@ -113,10 +112,12 @@ export async function POST(req: NextRequest) {
     }
 
     // Prevent duplicate pending invitations to the same email
-    const existingInvite = await Invitation.findOne({
-      project: projectId,
-      recipient: recipientEmail,
-      status: "pending",
+    const existingInvite = await prisma.invitation.findFirst({
+      where: {
+        projectId,
+        recipient: recipientEmail,
+        status: "pending",
+      },
     });
 
     if (existingInvite) {
@@ -126,10 +127,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const invite = await Invitation.create({
-      project: projectId,
-      inviter: userId,
-      recipient: recipientEmail,
+    const invite = await prisma.invitation.create({
+      data: {
+        projectId,
+        inviter: userId,
+        recipient: recipientEmail,
+        token: crypto.randomBytes(32).toString("hex"),
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      },
     });
 
     // Real-time notification — only fires if recipient already has an account

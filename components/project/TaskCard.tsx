@@ -5,27 +5,43 @@ import { toast } from "sonner";
 import { Trash2, GripVertical, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { deleteTask } from "@/services/taskService";
-// Reactive selectors — component re-renders when these store values change.
-// Never use useProjectStore.getState() inside a component; it bypasses reactivity.
 import { useProjectStore } from "@/store/projectStore";
 import type { Task } from "@/services/taskService";
 
 interface TaskCardProps {
     task: Task;
     onDragStart: (e: React.DragEvent, taskId: string) => void;
+    // Bug 15 fix: onDragEnd was missing — without it the parent can't clear
+    // draggedTaskId when a card is dropped outside a valid column.
+    onDragEnd: () => void;
 }
 
+// Bug fix: "urgent" was missing — accessing .className on undefined crashed silently.
+// Bug fix (TS18048): indexing a Record<string, V> returns V | undefined in strict mode.
+// Solution: use `as const`, declare a typed fallback, use a helper that always returns
+// a defined value — no non-null assertion needed.
 const priorityConfig = {
     low: { label: "Low", className: "bg-white/5 text-white/30 border-white/10" },
     medium: { label: "Med", className: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
     high: { label: "High", className: "bg-red-500/10 text-red-400 border-red-500/20" },
-};
+    urgent: { label: "Urgent", className: "bg-red-600/20 text-red-300 border-red-600/30" },
+} as const;
 
-export function TaskCard({ task, onDragStart }: TaskCardProps) {
+type PriorityKey = keyof typeof priorityConfig;
+type PriorityEntry = (typeof priorityConfig)[PriorityKey];
+
+const PRIORITY_FALLBACK: PriorityEntry = priorityConfig.medium;
+
+function getPriority(key: string | null | undefined): PriorityEntry {
+    if (key && key in priorityConfig) {
+        return priorityConfig[key as PriorityKey];
+    }
+    return PRIORITY_FALLBACK;
+}
+
+export function TaskCard({ task, onDragStart, onDragEnd }: TaskCardProps) {
     const [isDeleting, setIsDeleting] = useState(false);
 
-    // Reactive selectors — these re-render the component when store values change.
-    // This is the correct Zustand pattern inside React components.
     const fetchTasks = useProjectStore((s) => s.fetchTasks);
     const activeProject = useProjectStore((s) => s.activeProject);
 
@@ -36,7 +52,6 @@ export function TaskCard({ task, onDragStart }: TaskCardProps) {
         setIsDeleting(true);
         try {
             await deleteTask(task.id);
-            // Refresh the task list so the deleted card disappears
             await fetchTasks(activeProject.id);
         } catch {
             toast.error("Failed to delete task");
@@ -45,12 +60,14 @@ export function TaskCard({ task, onDragStart }: TaskCardProps) {
         }
     };
 
-    const priority = priorityConfig[task.priority ?? "medium"];
+    // getPriority always returns a defined entry — TS18048 is gone
+    const priority = getPriority(task.priority);
 
     return (
         <div
             draggable
             onDragStart={(e) => onDragStart(e, task.id)}
+            onDragEnd={onDragEnd}
             className="group relative rounded-lg border border-white/[0.07] bg-white/[0.03] p-3.5 cursor-grab active:cursor-grabbing hover:border-white/[0.14] hover:bg-white/[0.05] transition-all duration-150"
         >
             <GripVertical className="absolute left-1.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/10 group-hover:text-white/25 transition-colors" />
@@ -84,7 +101,6 @@ export function TaskCard({ task, onDragStart }: TaskCardProps) {
                 </div>
             </div>
 
-            {/* Shows a spinner while deleting, trash icon otherwise */}
             <button
                 onClick={handleDelete}
                 disabled={isDeleting}

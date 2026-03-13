@@ -1,0 +1,129 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  owner
+  admin
+  member
+}
+
+enum TaskStatus {
+  todo
+  in_progress
+  done
+}
+
+enum TaskPriority {
+  low
+  medium
+  high
+  urgent
+}
+
+enum InvitationStatus {
+  pending
+  accepted
+  declined
+  expired
+}
+
+model User {
+  id        String   @id @default(uuid())
+  clerkId   String   @unique
+  email     String   @unique
+  name      String?
+  imageUrl  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Project {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  owner       String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  members      ProjectMember[]
+  tasks        Task[]
+  invitations  Invitation[]
+  chatMessages ChatMessage[]
+
+  @@index([owner])
+}
+
+model ProjectMember {
+  id        String   @id @default(uuid())
+  projectId String
+  userId    String
+  role      Role     @default(member)
+  createdAt DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+  @@index([userId])
+}
+
+model Task {
+  id          String       @id @default(uuid())
+  projectId   String
+  assignee    String?
+  title       String
+  description String?      @db.Text
+  status      TaskStatus   @default(todo)
+  priority    TaskPriority @default(medium)
+  order       Float        @default(0)
+  dueDate     DateTime?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, status, order])
+  @@index([assignee, projectId])
+}
+
+model Invitation {
+  id        String           @id @default(uuid())
+  projectId String
+  inviter   String
+  recipient String
+  token     String           @unique
+  status    InvitationStatus @default(pending)
+  expiresAt DateTime
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  // BUG FIX: removed @@unique([projectId, recipient, status]) — this constraint
+  // allows only ONE row per (project, recipient, status) combination, meaning a user
+  // who was previously invited (status=declined) and re-invited would hit a unique
+  // constraint violation on the second pending invite.
+  // The findFirst check in the POST route already guards against duplicate pending invites.
+  @@index([recipient, status])
+  @@index([expiresAt])
+}
+
+model ChatMessage {
+  id        String   @id @default(uuid())
+  projectId String
+  userId    String
+  message   String   @db.Text
+  createdAt DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, createdAt])
+}

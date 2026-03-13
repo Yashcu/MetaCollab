@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { connectDB } from "@/lib/mongodb";
-import { Project } from "@/lib/models/Project";
+import { clerkClient } from "@clerk/nextjs/server";
+import { prisma } from "@/lib/prisma";
 import { pusherServer } from "@/lib/pusher";
-import { isValidObjectId } from "@/lib/utils";
 import { requireAuth, serverError } from "@/lib/api";
 import crypto from "crypto";
 
@@ -19,10 +18,6 @@ export async function POST(
 
         const { id } = await params;
 
-        if (!isValidObjectId(id)) {
-            return NextResponse.json({ message: "Invalid project ID" }, { status: 400 });
-        }
-
         const body = await req.json();
         const { message } = body;
 
@@ -37,23 +32,30 @@ export async function POST(
             );
         }
 
-        await connectDB();
-
-        // Deny if the sender isn't a project member
-        // exists() avoids loading the full document — we only need a boolean here
-        const isMember = await Project.exists({
-            _id: id,
-            "members.userId": userId,
+        // Deny if the sender isn't a project owner or member
+        const project = await prisma.project.findFirst({
+            where: {
+                id,
+                OR: [
+                    { owner: userId },
+                    { members: { some: { userId } } }
+                ]
+            }
         });
 
-        if (!isMember) {
+        if (!project) {
             return NextResponse.json({ message: "Project not found or access denied" }, { status: 403 });
         }
 
-        // build user object from auth — never trust client-supplied identity
+        // Resolve the sender's display name from Clerk — never trust client-supplied identity
+        const client = await clerkClient();
+        const clerkUser = await client.users.getUser(userId);
+
         await pusherServer.trigger(`private-project-${id}`, "chat:message", {
             id: crypto.randomUUID(),
             userId,
+            userName: clerkUser.fullName ?? clerkUser.firstName ?? "Anonymous",
+            avatarUrl: clerkUser.imageUrl ?? null,
             message: message.trim(),
             timestamp: new Date().toISOString(),
         });

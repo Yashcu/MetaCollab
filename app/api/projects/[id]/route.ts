@@ -1,11 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { connectDB } from "@/lib/mongodb";
-import { Project } from "@/lib/models/Project";
-import { Task } from "@/lib/models/Task";
-import { Invitation } from "@/lib/models/Invitation";
+import { prisma } from "@/lib/prisma";
 import { pusherServer } from "@/lib/pusher";
 import { projectUpdateSchema } from "@/lib/validations";
-import { isValidObjectId } from "@/lib/utils";
 import { requireAuth, validationError, serverError } from "@/lib/api";
 
 export const runtime = "nodejs";
@@ -21,20 +17,20 @@ export async function GET(
 
     const { id } = await params;
 
-    if (!isValidObjectId(id)) {
-      return NextResponse.json(
-        { message: "Invalid project ID" },
-        { status: 400 }
-      );
-    }
-
-    await connectDB();
-
     // Membership check is baked into the query — non-members get a 404
-    const project = await Project.findOne({
-      _id: id,
-      "members.userId": userId,
-    }).lean();
+    const project = await prisma.project.findFirst({
+      where: {
+        id,
+        members: {
+          some: {
+            userId,
+          },
+        },
+      },
+      include: {
+        members: true,
+      },
+    });
 
     if (!project) {
       return NextResponse.json(
@@ -57,48 +53,33 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const { userId, error } = await requireAuth();
+  if (error) return error;
+
+  const { id } = await params;
+
+  const body = await req.json();
+  const parsed = projectUpdateSchema.safeParse(body);
+  if (!parsed.success) {
+    return validationError(parsed.error);
+  }
+
+  // Only include fields that were actually provided
+  const allowedUpdates = {
+    ...(parsed.data.name && { name: parsed.data.name.trim() }),
+    ...(parsed.data.description !== undefined && {
+      description: parsed.data.description.trim(),
+    }),
+  };
+
   try {
-    const { userId, error } = await requireAuth();
-    if (error) return error;
+    const updatedProject = await prisma.project.update({
+      where: { id, owner: userId }, // single-query owner guard — throws P2025 if not owner
+      data: allowedUpdates,
+      include: { members: true }, // Always include members so clients fully hydrate
+    });
 
-    const { id } = await params;
-
-    if (!isValidObjectId(id)) {
-      return NextResponse.json(
-        { message: "Invalid project ID" },
-        { status: 400 }
-      );
-    }
-
-    const body = await req.json();
-
-    const parsed = projectUpdateSchema.safeParse(body);
-    if (!parsed.success) {
-      return validationError(parsed.error);
-    }
-
-    // Only include fields that were actually provided
-    const allowedUpdates = {
-      ...(parsed.data.name && { name: parsed.data.name.trim() }),
-      ...(parsed.data.description !== undefined && { description: parsed.data.description.trim() }),
-    };
-
-    await connectDB();
-
-    const updatedProject = await Project.findOneAndUpdate(
-      { _id: id, owner: userId },
-      allowedUpdates,
-      { new: true, runValidators: true }
-    ).lean();
-
-    if (!updatedProject) {
-      return NextResponse.json(
-        { message: "Project not found or you are not the owner" },
-        { status: 404 }
-      );
-    }
-
-    // Notify all project members of the change
+    // Notify all project members of the change — include members so clients can update state
     await pusherServer.trigger(
       `private-project-${id}`,
       "project:updated",
@@ -109,8 +90,20 @@ export async function PATCH(
       { success: true, data: updatedProject, message: "Project updated successfully" },
       { status: 200 }
     );
-  } catch (error: unknown) {
-    return serverError("PATCH /api/projects/[id]", error);
+  } catch (e: unknown) {
+    // P2025 = record not found (project doesn't exist OR caller isn't the owner)
+    if (
+      typeof e === "object" &&
+      e !== null &&
+      "code" in e &&
+      (e as { code: string }).code === "P2025"
+    ) {
+      return NextResponse.json(
+        { message: "Project not found or you are not the owner" },
+        { status: 404 }
+      );
+    }
+    return serverError("PATCH /api/projects/[id]", e);
   }
 }
 
@@ -125,21 +118,14 @@ export async function DELETE(
 
     const { id } = await params;
 
-    if (!isValidObjectId(id)) {
-      return NextResponse.json(
-        { message: "Invalid project ID" },
-        { status: 400 }
-      );
-    }
-
-    await connectDB();
-
-    const project = await Project.findOneAndDelete({
-      _id: id,
-      owner: userId,
+    const project = await prisma.project.findUnique({
+      where: { id },
+      include: {
+        members: true,
+      },
     });
 
-    if (!project) {
+    if (!project || project.owner !== userId) {
       return NextResponse.json(
         { message: "Project not found or you are not the owner" },
         { status: 404 }
@@ -147,10 +133,11 @@ export async function DELETE(
     }
 
     // Cascade: clean up tasks and invitations tied to this project
-    await Promise.all([
-      Task.deleteMany({ project: id }),
-      Invitation.deleteMany({ project: id }),
-    ]);
+    // Prisma will handle cascade deletes if configured in schema.prisma (`onDelete: Cascade`),
+    // which we already set for `Task`, `ProjectMember`, and `Invitation`.
+    await prisma.project.delete({
+      where: { id },
+    });
 
     // Let connected clients know the project is gone
     await pusherServer.trigger(
@@ -171,10 +158,8 @@ export async function DELETE(
 
     await Promise.all(memberTriggers);
 
-    return NextResponse.json(
-      { success: true, data: null, message: "Project deleted successfully" },
-      { status: 200 }
-    );
+    // 204 No Content — correct REST response for a successful DELETE
+    return new NextResponse(null, { status: 204 });
   } catch (error: unknown) {
     return serverError("DELETE /api/projects/[id]", error);
   }

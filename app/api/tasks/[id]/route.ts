@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { connectDB } from "@/lib/mongodb";
-import { Task } from "@/lib/models/Task";
-import { Project } from "@/lib/models/Project";
+import { prisma } from "@/lib/prisma";
 import { pusherServer } from "@/lib/pusher";
 import { taskUpdateSchema } from "@/lib/validations";
-import { isValidObjectId } from "@/lib/utils";
 import { requireAuth, validationError, serverError } from "@/lib/api";
 
 export const runtime = "nodejs";
@@ -20,13 +17,6 @@ export async function PATCH(
 
     const { id: taskId } = await params;
 
-    if (!isValidObjectId(taskId)) {
-      return NextResponse.json(
-        { message: "Invalid task ID" },
-        { status: 400 }
-      );
-    }
-
     const body = await req.json();
 
     const parsed = taskUpdateSchema.safeParse(body);
@@ -34,20 +24,26 @@ export async function PATCH(
       return validationError(parsed.error);
     }
 
-    await connectDB();
-
-    const task = await Task.findById(taskId).select("project").lean();
+    const task = await prisma.task.findUnique({
+      where: { id: taskId },
+      select: { projectId: true },
+    });
+    
     if (!task) {
       return NextResponse.json({ message: "Task not found" }, { status: 404 });
     }
 
     // Membership check — any project member can update tasks
-    const isMember = await Project.exists({
-      _id: task.project,
-      "members.userId": userId,
+    const member = await prisma.projectMember.findUnique({
+      where: {
+        projectId_userId: {
+          projectId: task.projectId,
+          userId,
+        },
+      },
     });
 
-    if (!isMember) {
+    if (!member) {
       return NextResponse.json(
         { message: "You do not have access to this project's tasks" },
         { status: 403 }
@@ -56,19 +52,14 @@ export async function PATCH(
 
     const safeUpdates = parsed.data;
 
-    const updatedTask = await Task.findByIdAndUpdate(
-      taskId,
-      safeUpdates,
-      { new: true, runValidators: true }
-    ).lean();
-
-    if (!updatedTask) {
-      return NextResponse.json({ message: "Task not found" }, { status: 404 });
-    }
+    const updatedTask = await prisma.task.update({
+      where: { id: taskId },
+      data: safeUpdates,
+    });
 
     // Notify project members of the change
     await pusherServer.trigger(
-      `private-project-${task.project}`,
+      `private-project-${task.projectId}`,
       "task:updated",
       updatedTask
     );
@@ -93,38 +84,39 @@ export async function DELETE(
 
     const { id: taskId } = await params;
 
-    if (!isValidObjectId(taskId)) {
-      return NextResponse.json(
-        { message: "Invalid task ID" },
-        { status: 400 }
-      );
-    }
-
-    await connectDB();
-
-    const task = await Task.findById(taskId).select("project").lean();
+    const task = await prisma.task.findUnique({
+      where: { id: taskId },
+      select: { projectId: true },
+    });
+    
     if (!task) {
       return NextResponse.json({ message: "Task not found" }, { status: 404 });
     }
 
     // Any project member can delete — no owner-only restriction
-    const isMember = await Project.exists({
-      _id: task.project,
-      "members.userId": userId,
+    const member = await prisma.projectMember.findUnique({
+      where: {
+        projectId_userId: {
+          projectId: task.projectId,
+          userId,
+        },
+      },
     });
 
-    if (!isMember) {
+    if (!member) {
       return NextResponse.json(
         { message: "You do not have access to this project's tasks" },
         { status: 403 }
       );
     }
 
-    await Task.findByIdAndDelete(taskId);
+    await prisma.task.delete({
+      where: { id: taskId },
+    });
 
     // Notify project members the task was removed
     await pusherServer.trigger(
-      `private-project-${task.project}`,
+      `private-project-${task.projectId}`,
       "task:deleted",
       { taskId }
     );

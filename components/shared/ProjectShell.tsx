@@ -6,7 +6,7 @@
 import { useEffect } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Kanban, MessageSquare, Video } from "lucide-react";
+import { ArrowLeft, Kanban, MessageSquare } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useProjectStore } from "@/store/projectStore";
 import { LoadingSpinner } from "@/components/shared/LoadingSpinner";
@@ -14,7 +14,6 @@ import { LoadingSpinner } from "@/components/shared/LoadingSpinner";
 const tabs = [
     { label: "Board", icon: Kanban, suffix: "" },
     { label: "Chat", icon: MessageSquare, suffix: "/chat" },
-    { label: "Call", icon: Video, suffix: "/call" },
 ];
 
 interface ProjectShellProps {
@@ -24,7 +23,7 @@ interface ProjectShellProps {
 
 export function ProjectShell({ projectId, children }: ProjectShellProps) {
     const pathname = usePathname();
-    const { fetchProjectById, fetchTasks, activeProject, isLoading } =
+    const { fetchProjectById, fetchTasks, activeProject, isLoadingProjects: isLoading } =
         useProjectStore();
 
     // Fetch project details and its tasks whenever the project ID changes.

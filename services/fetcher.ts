@@ -30,9 +30,10 @@ export const fetchJson = async <T>(
 
     let parsedData: unknown = null;
 
-    const contentLength = response.headers.get("content-length");
-
-    if (contentLength !== "0") {
+    // Use content-type to decide whether to parse — Content-Length is absent for
+    // gzipped or Transfer-Encoding: chunked responses, making it an unreliable signal.
+    const contentType = response.headers.get("content-type") ?? "";
+    if (contentType.includes("application/json")) {
       try {
         parsedData = await response.json();
       } catch {

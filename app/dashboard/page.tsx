@@ -15,7 +15,7 @@ export default function DashboardPage() {
     const { user } = useUser();
     const [createOpen, setCreateOpen] = useState(false);
     const projects = useProjectStore((s) => s.projects);
-    const isLoading = useProjectStore((s) => s.isLoading);
+    const isLoading = useProjectStore((s) => s.isLoadingProjects);
     const invitations = useInvitationStore((s) => s.invitations);
 
     const firstName = user?.firstName ?? "there";

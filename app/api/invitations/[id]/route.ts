@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { clerkClient } from "@clerk/nextjs/server";
-import { connectDB } from "@/lib/mongodb";
-import { Invitation } from "@/lib/models/Invitation";
-import { Project } from "@/lib/models/Project";
+import { prisma } from "@/lib/prisma";
 import { pusherServer } from "@/lib/pusher";
-import mongoose from "mongoose";
 import { requireAuth, serverError } from "@/lib/api";
 
 export const runtime = "nodejs";
@@ -20,13 +17,6 @@ export async function PATCH(
 
     const { id } = await params;
 
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return NextResponse.json(
-        { message: "Invalid invitation ID" },
-        { status: 400 }
-      );
-    }
-
     const body = await req.json();
     const action: unknown = body.action;
 
@@ -37,9 +27,10 @@ export async function PATCH(
       );
     }
 
-    await connectDB();
+    const invitation = await prisma.invitation.findUnique({
+      where: { id },
+    });
 
-    const invitation = await Invitation.findById(id);
     if (!invitation) {
       return NextResponse.json(
         { message: "Invitation not found" },
@@ -66,42 +57,69 @@ export async function PATCH(
       );
     }
 
+    // Enforce expiry — mark expired and reject with 410 Gone
+    if (invitation.expiresAt < new Date()) {
+      await prisma.invitation.update({
+        where: { id },
+        data: { status: "expired" },
+      });
+      return NextResponse.json(
+        { message: "This invitation has expired" },
+        { status: 410 }
+      );
+    }
+
     if (action === "accept") {
       // Guard against adding the same user twice if they somehow accept twice
-      const alreadyMember = await Project.exists({
-        _id: invitation.project,
-        "members.userId": userId,
+      const alreadyMember = await prisma.projectMember.findUnique({
+        where: {
+          projectId_userId: {
+            projectId: invitation.projectId,
+            userId,
+          },
+        },
       });
 
       if (alreadyMember) {
-        invitation.status = "accepted";
-        await invitation.save();
+        await prisma.invitation.update({
+          where: { id },
+          data: { status: "accepted" },
+        });
+
         return NextResponse.json(
           { success: true, message: "Already a member" },
           { status: 200 }
         );
       }
 
-      const updatedProject = await Project.findByIdAndUpdate(
-        invitation.project,
-        { $push: { members: { userId, role: "member" } } },
-        { new: true }
-      );
+      const updatedProject = await prisma.project.update({
+        where: { id: invitation.projectId },
+        data: {
+          members: {
+            create: {
+              userId,
+              role: "member",
+            },
+          },
+        },
+      });
 
-      invitation.status = "accepted";
-      await invitation.save();
+      await prisma.invitation.update({
+        where: { id },
+        data: { status: "accepted" },
+      });
 
       if (updatedProject) {
         // Notify existing members the project changed
         await pusherServer.trigger(
-          `private-project-${updatedProject._id}`,
+          `private-project-${updatedProject.id}`,
           "project:updated",
           updatedProject
         );
 
         // Announce the new member to the project channel
         await pusherServer.trigger(
-          `private-project-${updatedProject._id}`,
+          `private-project-${updatedProject.id}`,
           "user:joined",
           {
             userId: userId,
@@ -116,7 +134,7 @@ export async function PATCH(
         `private-user-${invitation.inviter}`,
         "invitation:accepted",
         {
-          projectId: invitation.project,
+          projectId: invitation.projectId,
           projectName: updatedProject?.name ?? "a project",
           recipientId: userId,
           recipientName: clerkUser.fullName || clerkUser.firstName || "A user",
@@ -137,14 +155,16 @@ export async function PATCH(
     }
 
     // Decline path
-    invitation.status = "declined";
-    await invitation.save();
+    await prisma.invitation.update({
+      where: { id },
+      data: { status: "declined" },
+    });
 
     await pusherServer.trigger(
       `private-user-${invitation.inviter}`,
       "invitation:declined",
       {
-        projectId: invitation.project,
+        projectId: invitation.projectId,
         recipientId: userId,
         recipientName: clerkUser.fullName || clerkUser.firstName || "A user",
       }

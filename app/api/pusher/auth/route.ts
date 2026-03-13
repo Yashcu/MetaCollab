@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { connectDB } from "@/lib/mongodb";
-import { Project } from "@/lib/models/Project";
+import { prisma } from "@/lib/prisma";
 import { pusherServer } from "@/lib/pusher";
-import { isValidObjectId } from "@/lib/utils";
 import { requireAuth, serverError } from "@/lib/api";
 
 export const runtime = "nodejs";
@@ -46,19 +44,13 @@ export async function POST(req: NextRequest) {
     } else if (channelName.startsWith("private-project-")) {
       const projectId = channelName.replace("private-project-", "");
 
-      await connectDB();
-
-      if (!isValidObjectId(projectId)) {
-        return NextResponse.json(
-          { message: "Invalid project ID" },
-          { status: 400 }
-        );
-      }
-
-      // exists() avoids loading the full document — we only need a boolean here
-      const isMember = await Project.exists({
-        _id: projectId,
-        "members.userId": userId,
+      const isMember = await prisma.projectMember.findUnique({
+        where: {
+          projectId_userId: {
+            projectId,
+            userId,
+          },
+        },
       });
 
       if (!isMember) {

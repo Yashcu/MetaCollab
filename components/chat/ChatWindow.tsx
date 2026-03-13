@@ -39,27 +39,18 @@ export function ChatWindow({ projectId }: ChatWindowProps) {
     const sendMessage = async () => {
         if (!input.trim() || !user || isSending) return;
 
-        const message: ChatMessage = {
-            id: crypto.randomUUID(),
-            user: { id: user.id, name: user.fullName ?? user.firstName ?? "User" },
-            message: input.trim(),
-            timestamp: new Date().toISOString(),
-        };
-
+        const trimmedMessage = input.trim();
         setIsSending(true);
         setInput("");
 
         try {
-            // Add optimistically — server will broadcast to everyone including sender
-            addMessage(message);
-
             await fetch(`/api/projects/${projectId}/chat`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(message),
+                body: JSON.stringify({ message: trimmedMessage }),
             });
         } catch {
-            // Message already shown optimistically — leave it as is
+            setInput(trimmedMessage);
         } finally {
             setIsSending(false);
         }
@@ -69,6 +60,14 @@ export function ChatWindow({ projectId }: ChatWindowProps) {
         <div className="flex flex-col h-full">
             {/* Messages */}
             <div className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-3">
+                <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-1.5 bg-cyan-400/10 border border-cyan-400/20 px-2 py-0.5 rounded-full">
+                        <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+                        <span className="text-[10px] uppercase tracking-wider font-bold text-cyan-400">Live Room</span>
+                    </div>
+                    <span className="text-[10px] text-white/20 italic">Messages are transient and not stored</span>
+                </div>
+
                 {messages.length === 0 && (
                     <div className="flex flex-col items-center justify-center h-full text-white/20 text-sm">
                         <p>No messages yet.</p>
@@ -77,7 +76,7 @@ export function ChatWindow({ projectId }: ChatWindowProps) {
                 )}
 
                 {messages.map((msg) => {
-                    const isMe = msg.user.id === user?.id;
+                    const isMe = msg.userId === user?.id;
                     return (
                         <div
                             key={msg.id}
@@ -85,13 +84,13 @@ export function ChatWindow({ projectId }: ChatWindowProps) {
                         >
                             {/* Avatar */}
                             <div className="w-7 h-7 rounded-full bg-gradient-to-br from-cyan-400/40 to-violet-500/40 flex items-center justify-center text-[10px] font-bold text-white shrink-0 mt-0.5">
-                                {msg.user.name[0]?.toUpperCase()}
+                                {msg.userName[0]?.toUpperCase()}
                             </div>
 
                             <div className={`flex flex-col max-w-[70%] ${isMe ? "items-end" : "items-start"}`}>
                                 <div className="flex items-baseline gap-2 mb-1">
                                     {!isMe && (
-                                        <span className="text-white/40 text-xs font-medium">{msg.user.name}</span>
+                                        <span className="text-white/40 text-xs font-medium">{msg.userName}</span>
                                     )}
                                     <span className="text-white/15 text-[10px]">
                                         {new Date(msg.timestamp).toLocaleTimeString("en-US", {
@@ -103,8 +102,8 @@ export function ChatWindow({ projectId }: ChatWindowProps) {
 
                                 <div
                                     className={`rounded-2xl px-3.5 py-2 text-sm leading-relaxed ${isMe
-                                            ? "bg-cyan-400/15 text-cyan-100 rounded-tr-sm"
-                                            : "bg-white/[0.06] text-white/80 rounded-tl-sm"
+                                        ? "bg-cyan-400/15 text-cyan-100 rounded-tr-sm"
+                                        : "bg-white/[0.06] text-white/80 rounded-tl-sm"
                                         }`}
                                 >
                                     {msg.message}

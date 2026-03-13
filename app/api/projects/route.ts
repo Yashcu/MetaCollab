@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { connectDB } from "@/lib/mongodb";
-import { Project } from "@/lib/models/Project";
-import type { IProjectMember } from "@/lib/models/Project";
+import { prisma } from "@/lib/prisma";
 import { projectSchema } from "@/lib/validations";
 import { requireAuth, validationError, serverError } from "@/lib/api";
 
@@ -22,16 +20,22 @@ export async function POST(req: NextRequest) {
 
     const { name, description } = parsed.data;
 
-    await connectDB();
-
-    const projectDoc = await Project.create({
-      name: name.trim(),
-      description: typeof description === "string" ? description.trim() : "",
-      owner: userId,
-      members: [{ userId, role: "owner" }] as IProjectMember[],
+    const project = await prisma.project.create({
+      data: {
+        name: name.trim(),
+        description: typeof description === "string" ? description.trim() : "",
+        owner: userId,
+        members: {
+          create: {
+            userId,
+            role: "owner",
+          },
+        },
+      },
+      include: {
+        members: true,
+      },
     });
-
-    const project = projectDoc.toObject();
 
     return NextResponse.json(
       { success: true, data: project, message: "Project created successfully" },
@@ -43,19 +47,54 @@ export async function POST(req: NextRequest) {
 }
 
 // Get all projects the current user belongs to
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
     const { userId, error } = await requireAuth();
     if (error) return error;
 
-    await connectDB();
+    // Pagination — defaults: page 1, 20 per page, max 50
+    const page  = Math.max(1, parseInt(req.nextUrl.searchParams.get("page")  ?? "1", 10));
+    const limit = Math.min(50, parseInt(req.nextUrl.searchParams.get("limit") ?? "20", 10));
+    const skip  = (page - 1) * limit;
 
-    const projects = await Project.find({ "members.userId": userId })
-      .sort({ createdAt: -1 })
-      .lean();
+    const [projects, total] = await Promise.all([
+      prisma.project.findMany({
+        where: {
+          members: {
+            some: { userId },
+          },
+        },
+        // Return only what the dashboard card needs — no full member rows
+        select: {
+          id: true,
+          name: true,
+          description: true,
+          owner: true,
+          createdAt: true,
+          updatedAt: true,
+          _count: {
+            select: {
+              members: true,
+              tasks: true,
+            },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+        take: limit,
+        skip,
+      }),
+      prisma.project.count({
+        where: { members: { some: { userId } } },
+      }),
+    ]);
 
     return NextResponse.json(
-      { success: true, data: projects, message: "Projects fetched successfully" },
+      {
+        success: true,
+        data: projects,
+        meta: { page, limit, total, totalPages: Math.ceil(total / limit) },
+        message: "Projects fetched successfully",
+      },
       { status: 200 }
     );
   } catch (error: unknown) {

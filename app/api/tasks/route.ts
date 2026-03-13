@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { connectDB } from "@/lib/mongodb";
-import { Task } from "@/lib/models/Task";
-import { Project } from "@/lib/models/Project";
+import { prisma } from "@/lib/prisma";
 import { pusherServer } from "@/lib/pusher";
 import { taskSchema } from "@/lib/validations";
-import { isValidObjectId } from "@/lib/utils";
 import { requireAuth, validationError, serverError } from "@/lib/api";
 
 export const runtime = "nodejs";
@@ -23,31 +20,33 @@ export async function POST(req: NextRequest) {
 
     const { title, description, project: projectId, assigneeId, status, priority } = parsed.data;
 
-    await connectDB();
-
     // Only project members can create tasks
-    const isMember = await Project.exists({
-      _id: projectId,
-      "members.userId": userId,
+    const member = await prisma.projectMember.findUnique({
+      where: {
+        projectId_userId: {
+          projectId,
+          userId,
+        },
+      },
     });
 
-    if (!isMember) {
+    if (!member) {
       return NextResponse.json(
         { message: "Project not found or you are not a member" },
         { status: 403 }
       );
     }
 
-    const taskDoc = await Task.create({
-      title: title.trim(),
-      description: description?.trim() ?? "",
-      project: projectId,
-      assignee: assigneeId ?? undefined,
-      status: status ?? "todo",
-      priority: priority ?? "medium",
+    const task = await prisma.task.create({
+      data: {
+        title: title.trim(),
+        description: description?.trim() ?? "",
+        projectId,
+        assignee: assigneeId ?? null,
+        status: status ?? "todo",
+        priority: priority ?? "medium",
+      },
     });
-
-    const task = taskDoc.toObject();
 
     // Real-time notification to project channel
     await pusherServer.trigger(
@@ -80,35 +79,45 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    if (!isValidObjectId(projectId)) {
-      return NextResponse.json(
-        { message: "Invalid project ID" },
-        { status: 400 }
-      );
-    }
-
-    await connectDB();
-
     // Gate the query behind a membership check
-    const isMember = await Project.exists({
-      _id: projectId,
-      "members.userId": userId,
+    const member = await prisma.projectMember.findUnique({
+      where: {
+        projectId_userId: {
+          projectId,
+          userId,
+        },
+      },
     });
 
-    if (!isMember) {
+    if (!member) {
       return NextResponse.json(
         { message: "Project not found or you do not have access" },
         { status: 403 }
       );
     }
 
-    const tasks = await Task.find({ project: projectId })
-      .sort({ order: 1 })
-      .select("-__v")
-      .lean();
+    // Pagination — defaults: page 1, 50 per page, max 100
+    const page  = Math.max(1, parseInt(req.nextUrl.searchParams.get("page")  ?? "1", 10));
+    const limit = Math.min(100, parseInt(req.nextUrl.searchParams.get("limit") ?? "50", 10));
+    const skip  = (page - 1) * limit;
+
+    const [tasks, total] = await Promise.all([
+      prisma.task.findMany({
+        where: { projectId },
+        orderBy: { order: "asc" },
+        take: limit,
+        skip,
+      }),
+      prisma.task.count({ where: { projectId } }),
+    ]);
 
     return NextResponse.json(
-      { success: true, data: tasks, message: "Tasks fetched successfully" },
+      {
+        success: true,
+        data: tasks,
+        meta: { page, limit, total, totalPages: Math.ceil(total / limit) },
+        message: "Tasks fetched successfully",
+      },
       { status: 200 }
     );
   } catch (error: unknown) {

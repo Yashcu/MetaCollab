@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { Mail, Check, X, Loader2 } from "lucide-react";
+import { Mail, Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useInvitationStore } from "@/store/invitationStore";
 import { Skeleton } from "@/components/ui/skeleton";

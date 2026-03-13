@@ -4,7 +4,7 @@ import { InvitationStatus } from "@/lib/types";
 // Invitation data returned from the API
 export interface Invitation {
   id: string;
-  project: string;
+  projectId: string;   // matches the API field name
   inviter: string;
   recipient: string;
   status: InvitationStatus;

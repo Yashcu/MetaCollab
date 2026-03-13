@@ -13,7 +13,17 @@ A full-stack collaborative project management app built with Next.js 14, MongoDB
 - **State** — Zustand
 - **UI** — Tailwind CSS v4 + shadcn/ui
 - **Drag & Drop** — @hello-pangea/dnd
-- **Video Calls** — simple-peer
+
+---
+
+## Features
+
+- **Project Management** — Create projects and manage team members with role-based permissions.
+- **Kanban Board** — Effortless task tracking with real-time drag-and-drop synchronization.
+- **Transient Live Chat** — Private, real-time project chat. Messages are ephemeral and never stored in the database for maximum privacy.
+- **Invitation System** — Secure, email-based team invitations with auto-expiring tokens.
+- **Real-time Updates** — Instant UI updates across all users via Pusher.
+- **User Authentication** — Robust auth and profile management powered by Clerk.
 
 ---
 
@@ -35,8 +45,7 @@ MetaCollab/
 │   │   ├── layout.tsx
 │   │   └── page.tsx
 │   ├── projects/
-│   │   └── [id]/                 # Project pages (tasks, chat, call)
-│   │       ├── call/
+│   │   └── [id]/                 # Project pages (tasks, chat)
 │   │       ├── chat/
 │   │       ├── layout.tsx
 │   │       └── page.tsx
@@ -48,7 +57,6 @@ MetaCollab/
 │   ├── not-found.tsx
 │   └── page.tsx                  # Landing / redirect page
 ├── components/                   # React components
-│   ├── call/                     # Video call UI
 │   ├── chat/                     # Chat UI
 │   ├── dashboard/                # Dashboard-specific components
 │   ├── project/                  # Project-specific components
@@ -78,7 +86,6 @@ MetaCollab/
 │   ├── taskService.ts
 │   └── userService.ts
 ├── store/                        # Zustand stores (UI state only)
-│   ├── callStore.ts
 │   ├── chatStore.ts
 │   ├── invitationStore.ts
 │   ├── projectStore.ts
@@ -187,6 +194,5 @@ Email-based invite system. Generates a secure 32-byte token. Auto-expires after 
 
 ## Notes
 
-- `Permissions-Policy` blocks camera and microphone globally. This will need to be loosened for the `/projects/[id]/call` route when Phase 5 Day 14 is reached.
 - ESLint is disabled during builds (`ignoreDuringBuilds: true`) until all lint issues are resolved.
 - The `backend/` and `frontend/` folders from the previous Express + Vite architecture have been removed. Everything now lives in this Next.js monorepo.
