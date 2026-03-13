@@ -182,4 +182,3 @@ NEXT_PUBLIC_PUSHER_CLUSTER="your_cluster"
 - **Analytics Dashboard:** Aggregate task completion metrics and burndown charts for deeper project insights.
 
 ---
-*Built with ❤️ for modern development teams.*
