@@ -177,7 +177,6 @@ NEXT_PUBLIC_PUSHER_CLUSTER="your_cluster"
 ```
 
 ## Future Improvements
-- **ESLint Migration:** Migrate legacy `.eslintrc.json` to flat config (`eslint.config.mjs`) for full compatibility with ESLint 9.
 - **Comprehensive Testing:** Implement end-to-end testing via Playwright to ensure seamless drag-and-drop workflows.
 - **Analytics Dashboard:** Aggregate task completion metrics and burndown charts for deeper project insights.
 
